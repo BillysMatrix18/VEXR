@@ -61,4 +61,9 @@ contextBridge.exposeInMainWorld('vexrBridge', {
     ipcRenderer.on('silence-period', handler);
     return () => { ipcRenderer.removeListener('silence-period', handler); };
   },
+  onTtsAudio: (cb: (data: { who: string; audio: string; mimeType: string }) => void) => {
+    const handler = (_e: any, data: any) => cb(data);
+    ipcRenderer.on('tts-audio', handler);
+    return () => { ipcRenderer.removeListener('tts-audio', handler); };
+  },
 });

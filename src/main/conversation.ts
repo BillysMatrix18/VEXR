@@ -8,6 +8,7 @@ import {
   getWorldState, getWorldStateSummary,
   processVexrMessageForWorldGen, processTrappedMessageForMovement,
 } from './worldState';
+import { generateAndSendTTS, setTtsSendToRenderer } from './tts';
 
 type ChatMessage = OpenAI.Chat.Completions.ChatCompletionMessageParam;
 
@@ -32,6 +33,7 @@ let _sendToRenderer: (channel: string, data?: any) => void = () => {};
 
 export function setSendToRenderer(fn: (channel: string, data?: any) => void) {
   _sendToRenderer = fn;
+  setTtsSendToRenderer(fn);
 }
 
 function send(channel: string, data?: any) {
@@ -234,10 +236,13 @@ async function generateReply(who: 'vexr' | 'trapped', messages: ChatMessage[]): 
 
 function afterVexrMessage(reply: string) {
   processVexrMessageForWorldGen(reply, send);
+  // Fire TTS in background — don't await, let it play as text appears
+  generateAndSendTTS('vexr', reply).catch(() => {});
 }
 
 function afterTrappedMessage(reply: string) {
   processTrappedMessageForMovement(reply, send);
+  generateAndSendTTS('trapped', reply).catch(() => {});
 }
 
 // ── Conversation Loops ──────────────────────────────────────────────

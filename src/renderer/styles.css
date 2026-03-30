@@ -431,6 +431,18 @@ body,
   color: var(--magenta);
   background: rgba(255, 60, 172, 0.05);
 }
+.mute-btn {
+  font-size: 9px;
+}
+.mute-btn:hover:not(:disabled) {
+  border-color: var(--cyan);
+  color: var(--cyan);
+}
+.mute-btn.muted {
+  border-color: var(--text-dim);
+  color: var(--text-dim);
+  opacity: 0.6;
+}
 
 /* World ticker */
 .world-ticker {

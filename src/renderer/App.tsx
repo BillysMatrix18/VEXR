@@ -40,8 +40,11 @@ const App: React.FC = () => {
   const [worldEvent, setWorldEvent] = useState(WORLD_EVENTS[0]);
   const [thoughts, setThoughts] = useState<string[]>([]);
   const [emotions, setEmotions] = useState<Record<string, number>>({});
+  const [isMuted, setIsMuted] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const isMutedRef = useRef(false);
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -72,6 +75,19 @@ const App: React.FC = () => {
     cleanups.push(window.vexrBridge.onEmotionalState((emo) => {
       setEmotions(emo);
     }));
+    cleanups.push(window.vexrBridge.onTtsAudio((data) => {
+      if (isMutedRef.current) return;
+      try {
+        // Stop any currently playing audio
+        if (currentAudioRef.current) {
+          currentAudioRef.current.pause();
+          currentAudioRef.current = null;
+        }
+        const audio = new Audio(`data:${data.mimeType};base64,${data.audio}`);
+        currentAudioRef.current = audio;
+        audio.play().catch(() => {});
+      } catch {}
+    }));
     cleanups.push(window.vexrBridge.onSessionCleared(() => {
       setMessages([]);
       setTypingWho(null);
@@ -79,6 +95,10 @@ const App: React.FC = () => {
       setSpawnedEntities(new Set());
       setThoughts([]);
       setEmotions({});
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause();
+        currentAudioRef.current = null;
+      }
     }));
 
     return () => cleanups.forEach(fn => fn());
@@ -108,6 +128,15 @@ const App: React.FC = () => {
   const handlePause = () => { setIsPaused(true); window.vexrBridge.pauseConversation(); };
   const handleResume = () => { setIsPaused(false); window.vexrBridge.resumeConversation(); };
   const handleNewSession = () => { window.vexrBridge.newSession(); };
+  const handleMuteToggle = () => {
+    const next = !isMuted;
+    setIsMuted(next);
+    isMutedRef.current = next;
+    if (next && currentAudioRef.current) {
+      currentAudioRef.current.pause();
+      currentAudioRef.current = null;
+    }
+  };
 
   const getMsgClass = (role: string) => {
     if (role === 'vexr') return 'vexr-msg';
@@ -217,6 +246,12 @@ const App: React.FC = () => {
                 </button>
               )}
               <button className="ctrl-btn new-btn" onClick={handleNewSession}>⟳ NEW SESSION</button>
+              <button
+                className={`ctrl-btn mute-btn ${isMuted ? 'muted' : ''}`}
+                onClick={handleMuteToggle}
+              >
+                {isMuted ? '🔇 MUTED' : '🔊 VOICE'}
+              </button>
             </div>
             <div className="world-ticker">
               <span className="ticker-label">WORLD:</span>

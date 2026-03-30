@@ -104,12 +104,21 @@ The right panel visualizes the Trapped One's internal thought process:
 - Characters gravitate toward each other during conversation
 - The Trapped One moves away when frustrated; VEXR cheerfully follows
 
+### AI Voices (TTS)
+
+Both characters have distinct voices powered by OpenAI TTS (`tts-1`):
+- **VEXR** — "onyx" voice: deep, theatrical, confident
+- **The Trapped One** — "nova" voice: warm, human, slightly uncertain
+
+Audio plays automatically as text appears. Use the **MUTE** button in the control bar to toggle voices on/off.
+
 ### Interaction
 
 - **Watch** — Characters talk and move through the 3D world
 - **Interrupt** — Type a message anytime as `[SIGNAL DETECTED]`
 - **Pause / Resume** — Freeze and unfreeze the conversation
 - **New Session** — Wipes everything and starts fresh
+- **Mute / Unmute** — Toggle AI voices
 - **Camera** — Click and drag to orbit, scroll to zoom
 
 ## Project Structure
@@ -119,6 +128,7 @@ src/
 ├── main/
 │   ├── main.ts              # Electron app entry, window, IPC handlers
 │   ├── config.ts            # OpenAI clients, system prompts, keyword parser
+│   ├── tts.ts               # TTS voice generation via OpenAI speech API
 │   ├── worldState.ts        # World state tracking, build cursor, generation logic
 │   ├── conversation.ts      # Conversation loop, thought/emotion gen, silence
 │   └── preload.ts           # Secure IPC bridge

@@ -1,13 +1,51 @@
 import * as path from 'path';
+import * as fs from 'fs';
 import * as dotenv from 'dotenv';
 import OpenAI from 'openai';
 
-dotenv.config({ path: path.join(__dirname, '../../.env') });
+// ── .env Loading (must happen before anything else) ─────────────────
+// Try multiple paths to find .env — handles dev, built, and packaged scenarios
+
+const envPaths = [
+  path.join(__dirname, '../../.env'),           // dev: dist/main/../../.env = project root
+  path.join(__dirname, '../../../.env'),         // packaged: app.asar/dist/main/../../../.env
+  path.join(process.cwd(), '.env'),             // CWD fallback
+];
+
+let envLoaded = false;
+for (const p of envPaths) {
+  if (fs.existsSync(p)) {
+    dotenv.config({ path: p });
+    envLoaded = true;
+    console.log('[VEXR] .env loaded from:', p);
+    break;
+  }
+}
+if (!envLoaded) {
+  // Last resort: try default dotenv behavior (looks in CWD)
+  dotenv.config();
+  console.warn('[VEXR] .env not found at expected paths, using dotenv defaults');
+}
+
+// Validate keys are present
+if (!process.env.OPENAI_KEY_VEXR) {
+  console.error('[VEXR] OPENAI_KEY_VEXR not found in environment. Check your .env file.');
+}
+if (!process.env.OPENAI_KEY_HUMAN) {
+  console.error('[VEXR] OPENAI_KEY_HUMAN not found in environment. Check your .env file.');
+}
 
 // ── OpenAI Clients ──────────────────────────────────────────────────
 
-export const openaiVexr = new OpenAI({ apiKey: process.env.OPENAI_KEY_VEXR });
-export const openaiHuman = new OpenAI({ apiKey: process.env.OPENAI_KEY_HUMAN });
+export const openaiVexr = new OpenAI({ apiKey: process.env.OPENAI_KEY_VEXR || '' });
+export const openaiHuman = new OpenAI({ apiKey: process.env.OPENAI_KEY_HUMAN || '' });
+
+// ── TTS Configuration ───────────────────────────────────────────────
+
+export const TTS_VOICES = {
+  vexr: 'onyx' as const,    // deep, theatrical, confident
+  trapped: 'nova' as const,  // warm, human, slightly uncertain
+};
 
 // ── VEXR System Prompt (God of the Construct) ───────────────────────
 

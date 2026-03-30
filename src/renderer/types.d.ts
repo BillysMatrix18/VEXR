@@ -19,6 +19,7 @@ interface VexrBridge {
   onThoughtFragments: (cb: (fragments: string[]) => void) => () => void;
   onEmotionalState: (cb: (emotions: Record<string, number>) => void) => () => void;
   onSilencePeriod: (cb: (isSilent: boolean) => void) => () => void;
+  onTtsAudio: (cb: (data: { who: string; audio: string; mimeType: string }) => void) => () => void;
 }
 
 interface Window {
