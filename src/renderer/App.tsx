@@ -41,6 +41,7 @@ const App: React.FC = () => {
   const [thoughts, setThoughts] = useState<string[]>([]);
   const [emotions, setEmotions] = useState<Record<string, number>>({});
   const [isMuted, setIsMuted] = useState(false);
+  const [refImage, setRefImage] = useState<{ base64: string; mimeType: string; preview: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const isMutedRef = useRef(false);
@@ -132,11 +133,37 @@ const App: React.FC = () => {
     const next = !isMuted;
     setIsMuted(next);
     isMutedRef.current = next;
+    window.vexrBridge.setMuted(next); // Tell main process to skip TTS API calls
     if (next && currentAudioRef.current) {
       currentAudioRef.current.pause();
       currentAudioRef.current = null;
     }
   };
+
+  const handleImageDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (file && /^image\/(jpeg|png|webp)/.test(file.type)) loadImage(file);
+  };
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) loadImage(file);
+  };
+
+  const loadImage = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const base64 = dataUrl.split(',')[1];
+      const mimeType = file.type;
+      setRefImage({ base64, mimeType, preview: dataUrl });
+      window.vexrBridge.sendReferenceImage(base64, mimeType);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const clearRefImage = () => setRefImage(null);
 
   const getMsgClass = (role: string) => {
     if (role === 'vexr') return 'vexr-msg';
@@ -213,8 +240,33 @@ const App: React.FC = () => {
             >
               {spawnedEntities.has('trapped') ? '○ TRAPPED' : '+ ADD TRAPPED'}
             </button>
+            <div className="image-feed-section">
+              <div className="entity-panel-title">REFERENCE</div>
+              {refImage ? (
+                <div className="ref-image-preview">
+                  <img src={refImage.preview} alt="ref" />
+                  <button className="ref-image-clear" onClick={clearRefImage}>✕</button>
+                </div>
+              ) : (
+                <div
+                  className="image-drop-zone"
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={handleImageDrop}
+                  onClick={() => document.getElementById('ref-image-input')?.click()}
+                >
+                  DROP IMAGE
+                </div>
+              )}
+              <input
+                id="ref-image-input"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                style={{ display: 'none' }}
+                onChange={handleImageSelect}
+              />
+            </div>
             <div className="entity-panel-hint">
-              Click to spawn characters into the void
+              Feed VEXR a reference image to inspire his building
             </div>
           </div>
 

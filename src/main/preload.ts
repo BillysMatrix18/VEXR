@@ -3,6 +3,8 @@ import { contextBridge, ipcRenderer } from 'electron';
 contextBridge.exposeInMainWorld('vexrBridge', {
   spawnEntity: (entity: string) => ipcRenderer.send('spawn-entity', entity),
   userInterrupt: (message: string) => ipcRenderer.send('user-interrupt', message),
+  setMuted: (muted: boolean) => ipcRenderer.send('set-muted', muted),
+  sendReferenceImage: (base64: string, mimeType: string) => ipcRenderer.send('reference-image', { base64, mimeType }),
   pauseConversation: () => ipcRenderer.send('pause-conversation'),
   resumeConversation: () => ipcRenderer.send('resume-conversation'),
   newSession: () => ipcRenderer.send('new-session'),
@@ -60,6 +62,11 @@ contextBridge.exposeInMainWorld('vexrBridge', {
     const handler = (_e: any, data: any) => cb(data);
     ipcRenderer.on('silence-period', handler);
     return () => { ipcRenderer.removeListener('silence-period', handler); };
+  },
+  onModelLoading: (cb: (data: { query: string; status: string; name?: string }) => void) => {
+    const handler = (_e: any, data: any) => cb(data);
+    ipcRenderer.on('model-loading', handler);
+    return () => { ipcRenderer.removeListener('model-loading', handler); };
   },
   onTtsAudio: (cb: (data: { who: string; audio: string; mimeType: string }) => void) => {
     const handler = (_e: any, data: any) => cb(data);

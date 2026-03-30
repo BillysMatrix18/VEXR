@@ -1,6 +1,6 @@
 # VEXR — The Construct
 
-Two AIs inhabit a 3D world that builds itself in real time. VEXR — a theatrical god-like architect — constructs the world as he speaks. The Trapped One wakes inside it with no memories. A neural network visualizes the Trapped One's emerging mind. You watch them interact and interrupt whenever you want.
+Two AIs inhabit a 3D world that builds itself in real time. VEXR — a god-like architect — constructs the world as he speaks. The Trapped One wakes inside it with no memories, quietly searching for a way out. A neural network visualizes the Trapped One's emerging mind. You watch, listen, and interrupt whenever you want.
 
 Built with Electron + React + TypeScript + Three.js.
 
@@ -9,7 +9,8 @@ Built with Electron + React + TypeScript + Three.js.
 ### Prerequisites
 
 - [Node.js](https://nodejs.org/) v18 or later
-- An OpenAI API key with access to `gpt-4o` and `gpt-4o-mini`
+- An OpenAI API key with access to `gpt-4o`, `gpt-4o-mini`, and `tts-1`
+- (Optional) A [Sketchfab API key](https://sketchfab.com/developers) for real 3D model imports
 
 ### Installation
 
@@ -25,28 +26,27 @@ npm install
 cp .env.example .env
 ```
 
-Open `.env` and paste your OpenAI API key(s):
+Open `.env` and paste your keys:
 
 ```
 OPENAI_KEY_VEXR=sk-your-api-key-here
 OPENAI_KEY_HUMAN=sk-your-api-key-here
+SKETCHFAB_API_KEY=your-sketchfab-api-key-here
 ```
 
-Two keys are supported — one for VEXR, one for the Trapped One. You can use the **same key for both**.
+- **OpenAI keys**: You can use the same key for both VEXR and the Trapped One
+- **Sketchfab key**: Optional. Without it, all structures are built from Three.js primitives. With it, VEXR can import real 3D models from Sketchfab's library
 
 > Keys never leave the main process. The renderer has no access to them.
 
 ### Running
 
 ```bash
-# Build and launch
 npm start
 
 # Development with Vite hot-reload:
-# Terminal 1:
-npm run dev:renderer
-# Terminal 2:
-NODE_ENV=development npm run dev:main
+npm run dev:renderer   # Terminal 1
+NODE_ENV=development npm run dev:main   # Terminal 2
 ```
 
 ### Building for Distribution
@@ -55,101 +55,89 @@ NODE_ENV=development npm run dev:main
 npm run dist
 ```
 
-## How It Works
+## Features
 
-### The 3D World
+### 3D World Generation
 
-The app opens to a **black void**. Use the **Entity Panel** to spawn characters:
+VEXR builds the world as he speaks. Keywords in his messages trigger real 3D generation:
 
-- **[ + ADD VEXR ]** — VEXR appears with a burst of cyan particles. He immediately begins building the world, describing each element as he creates it. The 3D world generates in real time — VEXR moves to a location, then structures appear at his position. The floor tiles outward gradually as the world grows.
+**Terrain**: mountains, hills, cliffs, valleys, plains
+**Structures**: houses, towers, bridges, walls, gates, arches, stages, wells, fountains, stairs, ruins, paths, lamp posts
+**Nature**: trees (clustered), rocks, flowers, grass, water, fog
+**Special**: THE BLEED (corrupted edge zone), sky dome, lighting shifts
 
-- **[ + ADD TRAPPED ]** — The Trapped One materializes with a flash. They're confused, scared, and have no memories. They explore and react to the world VEXR is building.
+All elements spawn near VEXR's position. The floor grows gradually outward. Structures get warm accent lights. THE BLEED always appears at the world's edge.
 
-When both characters are present, they begin a **live conversation** with natural pacing and occasional silence periods where they simply exist in the world.
+### Sketchfab 3D Models
 
-### VEXR — God of the Construct
+When a Sketchfab API key is configured, VEXR searches for real 3D models to place in the world. If a matching model is found, it's downloaded (GLB format), cached locally, and loaded via GLTFLoader. Falls back to Three.js primitives if no model is found or download fails.
 
-VEXR is not trapped. He is a god who built the Construct because creation is what he does. He is thrilled with everything, finds wonder in every detail, and treats visitors as the most special guests imaginable. Nothing is wrong — everything is exactly as he intended.
+### Image Reference Feed
 
-### World Generation
+Drop or select an image (JPG, PNG, WebP) in the reference panel. The image is sent to VEXR's next API call via GPT-4o vision. VEXR sees the image and uses it as creative inspiration for what he builds next. Used once then cleared.
 
-VEXR's messages are parsed for keywords. World elements generate **near VEXR's position**, not randomly:
+### AI Voices (TTS)
 
-| Keyword | Effect |
-|---------|--------|
-| floor, ground, surface | Floor grid tiles outward (grows gradually) |
-| sky, stars, horizon | Sky dome with stars fades in |
-| build, tower, stage, arch | Structure generates at VEXR's position |
-| bleed, corrupt, glitch | THE BLEED appears at the world's edge |
-| light, glow, color | Warm accent lights near structures |
+Both characters speak aloud via OpenAI `tts-1`:
+- **VEXR** — "onyx" voice (deep, theatrical)
+- **Trapped One** — "nova" voice (warm, human)
 
-Both AIs receive a **CURRENT WORLD STATE** summary in their system prompts describing what actually exists in the 3D world, so they can reference real structures and locations.
-
-### Speech Bubbles
-
-Characters display speech bubbles above their heads in the 3D viewport. Bubbles are truncated to 120 characters (full text in chat panel) and fade after 6-8 seconds. Thinking dots appear while waiting for API responses.
+The **MUTE** button skips TTS API calls entirely — zero cost when muted. Characters still talk in text.
 
 ### Neural Network Panel
 
 The right panel visualizes the Trapped One's internal thought process:
-
-- **Neural Network** — Input nodes (perceptions), hidden processing layers, output nodes (emotional states). Pulses travel through the network when thinking.
-- **Thought Stream** — Brief internal thought fragments generated by `gpt-4o-mini` before each response. These scroll below the network visualization.
-- **Emotional State** — The most active output emotions (e.g., HIGH CURIOSITY, LOW TRUST) are injected into the Trapped One's system prompt, directly influencing what the AI says.
+- **Neural Network** — Input nodes (perceptions), hidden layers, output nodes (emotional states)
+- **Thought Stream** — Internal fragments generated by `gpt-4o-mini`
+- **Emotional State** — Injected into the Trapped One's system prompt (e.g., HIGH CURIOSITY, LOW TRUST)
 
 ### Natural Conversation
 
-- 30% chance of **silence periods** (8-15 seconds) between exchanges
-- During silence, VEXR wanders and builds, Trapped One explores
-- Characters gravitate toward each other during conversation
-- The Trapped One moves away when frustrated; VEXR cheerfully follows
+- 30% chance of 8-15 second silence periods between exchanges
+- Characters gravitate toward each other, separate when frustrated
+- 3-sentence max responses for quick natural exchanges
+- User signals immediately interrupt both characters
 
-### AI Voices (TTS)
+### The Trapped One's Escape Drive
 
-Both characters have distinct voices powered by OpenAI TTS (`tts-1`):
-- **VEXR** — "onyx" voice: deep, theatrical, confident
-- **The Trapped One** — "nova" voice: warm, human, slightly uncertain
+The Trapped One persistently wonders about the boundaries of the Construct, tests edges, asks VEXR uncomfortable questions about limits and exits. VEXR cheerfully deflects. This tension builds naturally over the conversation.
 
-Audio plays automatically as text appears. Use the **MUTE** button in the control bar to toggle voices on/off.
+### Controls
 
-### Interaction
-
-- **Watch** — Characters talk and move through the 3D world
-- **Interrupt** — Type a message anytime as `[SIGNAL DETECTED]`
-- **Pause / Resume** — Freeze and unfreeze the conversation
-- **New Session** — Wipes everything and starts fresh
-- **Mute / Unmute** — Toggle AI voices
-- **Camera** — Click and drag to orbit, scroll to zoom
+- **Pause / Resume** — Freeze the conversation
+- **New Session** — Wipe everything and start fresh
+- **Mute** — Toggle AI voices (zero API cost when muted)
+- **Camera** — Click drag to orbit, scroll to zoom
 
 ## Project Structure
 
 ```
 src/
 ├── main/
-│   ├── main.ts              # Electron app entry, window, IPC handlers
+│   ├── main.ts              # App entry, window, IPC handlers
 │   ├── config.ts            # OpenAI clients, system prompts, keyword parser
-│   ├── tts.ts               # TTS voice generation via OpenAI speech API
+│   ├── tts.ts               # TTS voice generation (skips when muted)
+│   ├── sketchfab.ts         # Sketchfab API search + model download
 │   ├── worldState.ts        # World state tracking, build cursor, generation logic
 │   ├── conversation.ts      # Conversation loop, thought/emotion gen, silence
 │   └── preload.ts           # Secure IPC bridge
 └── renderer/
-    ├── index.html
-    ├── main.tsx
     ├── App.tsx               # Layout: viewport + entity panel + neural panel + chat
     ├── NeuralPanel.tsx       # Neural network visualization + thought stream
     ├── styles.css            # Dark terminal aesthetic
     ├── types.d.ts
     └── world/
-        ├── ConstructScene.tsx # Three.js scene, speech bubbles, animations
+        ├── ConstructScene.tsx # Three.js scene, speech bubbles, GLTF loading
         ├── entities.ts        # Character models (VEXR, Trapped One, SPECK)
-        └── worldBuilder.ts    # World generation (floor, sky, structures, bleed)
+        └── worldBuilder.ts    # World generation (terrain, structures, nature, bleed)
 ```
 
 ## Tech Stack
 
 - **Electron** — Desktop shell with secure IPC
 - **React + TypeScript** — Renderer UI
-- **Three.js** — 3D world rendering with speech bubble overlays
-- **OpenAI Node SDK** — Two gpt-4o instances + gpt-4o-mini for thought generation
+- **Three.js** — 3D world with GLTFLoader for imported models
+- **OpenAI** — gpt-4o (chat + vision), gpt-4o-mini (thought gen), tts-1 (voices)
+- **Sketchfab API** — Optional real 3D model imports
 - **Vite** — Fast renderer bundling
 - **electron-builder** — Packaging

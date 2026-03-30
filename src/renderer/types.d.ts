@@ -1,6 +1,8 @@
 interface VexrBridge {
   spawnEntity: (entity: string) => void;
   userInterrupt: (message: string) => void;
+  setMuted: (muted: boolean) => void;
+  sendReferenceImage: (base64: string, mimeType: string) => void;
   pauseConversation: () => void;
   resumeConversation: () => void;
   newSession: () => void;
@@ -18,6 +20,7 @@ interface VexrBridge {
   onMoveCharacter: (cb: (data: { who: string; x: number; z: number }) => void) => () => void;
   onThoughtFragments: (cb: (fragments: string[]) => void) => () => void;
   onEmotionalState: (cb: (emotions: Record<string, number>) => void) => () => void;
+  onModelLoading: (cb: (data: { query: string; status: string; name?: string }) => void) => () => void;
   onSilencePeriod: (cb: (isSilent: boolean) => void) => () => void;
   onTtsAudio: (cb: (data: { who: string; audio: string; mimeType: string }) => void) => () => void;
 }

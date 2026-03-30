@@ -71,6 +71,14 @@ export function clearLoop() {
 
 let lastEmotions: Record<string, number> = {};
 
+// ── Reference Image for VEXR ────────────────────────────────────────
+
+let pendingImage: { base64: string; mimeType: string } | null = null;
+
+export function setPendingImage(base64: string, mimeType: string) {
+  pendingImage = { base64, mimeType };
+}
+
 async function generateThoughtsAndEmotions(): Promise<{
   thoughts: string[];
   emotions: Record<string, number>;
@@ -167,6 +175,19 @@ function buildMessagesFor(who: 'vexr' | 'trapped', emotionalCtx?: string): ChatM
     } else {
       msgs.push({ role: 'user', content: '[Continue the conversation]' });
     }
+  }
+
+  // Inject reference image for VEXR if available (GPT-4o vision)
+  if (who === 'vexr' && pendingImage) {
+    const img = pendingImage;
+    pendingImage = null; // Use once
+    msgs.push({
+      role: 'user',
+      content: [
+        { type: 'text', text: '[A reference image has been transmitted from outside the Construct. Use it as creative inspiration for what you build next. Describe what you see and start building it!]' },
+        { type: 'image_url', image_url: { url: `data:${img.mimeType};base64,${img.base64}` } },
+      ] as any,
+    });
   }
 
   return msgs;
@@ -343,7 +364,14 @@ export function spawnEntity(entity: 'vexr' | 'trapped') {
 // ── User Interrupt ──────────────────────────────────────────────────
 
 export async function handleUserInterrupt(message: string) {
+  // Force-stop everything immediately — signal takes priority
   clearLoop();
+  send('typing-stop');
+
+  // Wait briefly for any in-flight API call to finish
+  if (isProcessing) {
+    await new Promise(r => setTimeout(r, 300));
+  }
 
   sharedHistory.push({ role: 'signal', content: message });
   send('new-message', { role: 'signal', content: message });

@@ -1,10 +1,12 @@
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { createVexrCharacter, createTrappedCharacter, createSpeck, createSpawnBurst } from './entities';
 import {
   WorldState, createWorldState,
   generateFloor, generateSky, generateStructure, generateBleed, shiftLighting,
+  generateTerrain, generateNature,
 } from './worldBuilder';
 
 interface Message {
@@ -197,8 +199,35 @@ const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messag
         case 'floor': generateFloor(s.scene, s.worldState, data.radius); break;
         case 'sky': generateSky(s.scene, s.worldState); break;
         case 'structure': generateStructure(s.scene, s.worldState, data.x, data.z, data.structureType); break;
+        case 'terrain': generateTerrain(s.scene, s.worldState, data.x, data.z, data.terrainType); break;
+        case 'nature': generateNature(s.scene, s.worldState, data.x, data.z, data.natureType); break;
         case 'bleed': generateBleed(s.scene, s.worldState, data.x, data.z); break;
         case 'light': shiftLighting(s.scene, s.worldState); break;
+        case 'model': {
+          // Load GLTF/GLB model from file path
+          const loader = new GLTFLoader();
+          try {
+            loader.load(`file://${data.modelPath}`, (gltf) => {
+              const model = gltf.scene;
+              model.position.set(data.x, 0, data.z);
+              // Scale to fit world
+              const box = new THREE.Box3().setFromObject(model);
+              const size = box.getSize(new THREE.Vector3());
+              const maxDim = Math.max(size.x, size.y, size.z);
+              const scale = maxDim > 5 ? 5 / maxDim : 1;
+              model.scale.setScalar(scale);
+              s.scene.add(model);
+              s.worldState.elements.push(model);
+              s.worldState.structureCount++;
+            }, undefined, () => {
+              // Fallback to primitive
+              generateStructure(s.scene, s.worldState, data.x, data.z, data.name || 'structure');
+            });
+          } catch {
+            generateStructure(s.scene, s.worldState, data.x, data.z, data.name || 'structure');
+          }
+          break;
+        }
       }
     });
 

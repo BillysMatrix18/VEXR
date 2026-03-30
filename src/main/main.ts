@@ -7,8 +7,10 @@ import {
   pauseConversation,
   resumeConversation,
   newSession,
+  setPendingImage,
 } from './conversation';
 import { resetWorldState } from './worldState';
+import { setTtsMuted } from './tts';
 
 // ── Window ──────────────────────────────────────────────────────────
 
@@ -59,6 +61,10 @@ app.whenReady().then(() => {
   });
   ipcMain.on('user-interrupt', (_event, message: string) => {
     handleUserInterrupt(message);
+  });
+  ipcMain.on('set-muted', (_event, muted: boolean) => setTtsMuted(muted));
+  ipcMain.on('reference-image', (_event, data: { base64: string; mimeType: string }) => {
+    setPendingImage(data.base64, data.mimeType);
   });
   ipcMain.on('pause-conversation', () => pauseConversation());
   ipcMain.on('resume-conversation', () => resumeConversation());
