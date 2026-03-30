@@ -7,33 +7,58 @@ contextBridge.exposeInMainWorld('vexrBridge', {
   resumeConversation: () => ipcRenderer.send('resume-conversation'),
   newSession: () => ipcRenderer.send('new-session'),
 
+  windowMinimize: () => ipcRenderer.send('window-minimize'),
+  windowMaximize: () => ipcRenderer.send('window-maximize'),
+  windowClose: () => ipcRenderer.send('window-close'),
+
   onNewMessage: (cb: (data: { role: string; content: string }) => void) => {
     const handler = (_e: any, data: any) => cb(data);
     ipcRenderer.on('new-message', handler);
     return () => { ipcRenderer.removeListener('new-message', handler); };
   },
   onTypingStart: (cb: (who: string) => void) => {
-    const handler = (_e: any, who: string) => cb(who);
+    const handler = (_e: any, data: any) => cb(data);
     ipcRenderer.on('typing-start', handler);
     return () => { ipcRenderer.removeListener('typing-start', handler); };
   },
   onTypingStop: (cb: () => void) => {
-    const handler = () => cb();
+    const handler = (_e: any, data: any) => cb(data);
     ipcRenderer.on('typing-stop', handler);
     return () => { ipcRenderer.removeListener('typing-stop', handler); };
   },
   onEntitySpawned: (cb: (entity: string) => void) => {
-    const handler = (_e: any, entity: string) => cb(entity);
+    const handler = (_e: any, data: any) => cb(data);
     ipcRenderer.on('entity-spawned', handler);
     return () => { ipcRenderer.removeListener('entity-spawned', handler); };
   },
   onSessionCleared: (cb: () => void) => {
-    const handler = () => cb();
+    const handler = (_e: any, data: any) => cb(data);
     ipcRenderer.on('session-cleared', handler);
     return () => { ipcRenderer.removeListener('session-cleared', handler); };
   },
-
-  windowMinimize: () => ipcRenderer.send('window-minimize'),
-  windowMaximize: () => ipcRenderer.send('window-maximize'),
-  windowClose: () => ipcRenderer.send('window-close'),
+  onGenerateWorldElement: (cb: (data: any) => void) => {
+    const handler = (_e: any, data: any) => cb(data);
+    ipcRenderer.on('generate-world-element', handler);
+    return () => { ipcRenderer.removeListener('generate-world-element', handler); };
+  },
+  onMoveCharacter: (cb: (data: { who: string; x: number; z: number }) => void) => {
+    const handler = (_e: any, data: any) => cb(data);
+    ipcRenderer.on('move-character', handler);
+    return () => { ipcRenderer.removeListener('move-character', handler); };
+  },
+  onThoughtFragments: (cb: (fragments: string[]) => void) => {
+    const handler = (_e: any, data: any) => cb(data);
+    ipcRenderer.on('thought-fragments', handler);
+    return () => { ipcRenderer.removeListener('thought-fragments', handler); };
+  },
+  onEmotionalState: (cb: (emotions: Record<string, number>) => void) => {
+    const handler = (_e: any, data: any) => cb(data);
+    ipcRenderer.on('emotional-state', handler);
+    return () => { ipcRenderer.removeListener('emotional-state', handler); };
+  },
+  onSilencePeriod: (cb: (isSilent: boolean) => void) => {
+    const handler = (_e: any, data: any) => cb(data);
+    ipcRenderer.on('silence-period', handler);
+    return () => { ipcRenderer.removeListener('silence-period', handler); };
+  },
 });

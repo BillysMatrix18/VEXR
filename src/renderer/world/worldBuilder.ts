@@ -3,7 +3,8 @@ import * as THREE from 'three';
 // ── World State ─────────────────────────────────────────────────────
 
 export interface WorldState {
-  hasFloor: boolean;
+  floorRadius: number;  // grows gradually: 0, 10, 20, 30... max 60
+  floorElements: THREE.Object3D[];
   hasSky: boolean;
   hasBleed: boolean;
   structureCount: number;
@@ -13,7 +14,8 @@ export interface WorldState {
 
 export function createWorldState(): WorldState {
   return {
-    hasFloor: false,
+    floorRadius: 0,
+    floorElements: [],
     hasSky: false,
     hasBleed: false,
     structureCount: 0,
@@ -38,23 +40,42 @@ export function parseKeywords(message: string): string[] {
   return [...new Set(kw)];
 }
 
-// ── Floor ───────────────────────────────────────────────────────────
+// ── Floor (Gradual Growth) ─────────────────────────────────────────
 
-export function generateFloor(scene: THREE.Scene, state: WorldState): void {
-  if (state.hasFloor) return;
-  state.hasFloor = true;
+export function generateFloor(scene: THREE.Scene, state: WorldState, radius: number): void {
+  // Clamp radius to max 60
+  const clampedRadius = Math.min(radius, 60);
+
+  // Don't regenerate at the same radius
+  if (clampedRadius === state.floorRadius && state.floorElements.length > 0) return;
+
+  // Remove old floor elements from scene
+  for (const el of state.floorElements) {
+    scene.remove(el);
+    // Also remove from the elements tracking array
+    const idx = state.elements.indexOf(el);
+    if (idx !== -1) state.elements.splice(idx, 1);
+  }
+  state.floorElements = [];
+
+  // Skip if radius is 0 (no floor yet)
+  if (clampedRadius <= 0) return;
+
+  state.floorRadius = clampedRadius;
+  const size = clampedRadius * 2;
 
   // Grid overlay
-  const grid = new THREE.GridHelper(60, 60, 0x00ffe1, 0x0a1a1a);
+  const grid = new THREE.GridHelper(size, clampedRadius, 0x00ffe1, 0x0a1a1a);
   const gridMat = grid.material as THREE.Material;
   gridMat.transparent = true;
   gridMat.opacity = 0.35;
   scene.add(grid);
+  state.floorElements.push(grid);
   state.elements.push(grid);
 
   // Reflective floor plane
   const plane = new THREE.Mesh(
-    new THREE.PlaneGeometry(60, 60),
+    new THREE.PlaneGeometry(size, size),
     new THREE.MeshStandardMaterial({
       color: 0x050510,
       metalness: 0.85,
@@ -66,6 +87,7 @@ export function generateFloor(scene: THREE.Scene, state: WorldState): void {
   plane.rotation.x = -Math.PI / 2;
   plane.position.y = -0.01;
   scene.add(plane);
+  state.floorElements.push(plane);
   state.elements.push(plane);
 }
 
@@ -110,10 +132,16 @@ export function generateSky(scene: THREE.Scene, state: WorldState): void {
   state.elements.push(dirLight);
 }
 
-// ── Structures ──────────────────────────────────────────────────────
+// ── Structures (Position-Based) ────────────────────────────────────
 
-export function generateStructure(scene: THREE.Scene, state: WorldState): void {
-  if (state.structureCount >= 7) return;
+export function generateStructure(
+  scene: THREE.Scene,
+  state: WorldState,
+  x: number,
+  z: number,
+  structureType: 'tower' | 'pyramid' | 'pillar' | 'arch',
+): THREE.Group | null {
+  if (state.structureCount >= 10) return null;
   state.structureCount++;
 
   const solidMat = new THREE.MeshStandardMaterial({
@@ -124,16 +152,9 @@ export function generateStructure(scene: THREE.Scene, state: WorldState): void {
     color: 0x00ffe1, wireframe: true, transparent: true, opacity: 0.12,
   });
 
-  const angle = Math.random() * Math.PI * 2;
-  const dist = 6 + Math.random() * 16;
-  const x = Math.cos(angle) * dist;
-  const z = Math.sin(angle) * dist;
-
-  const types = ['tower', 'pyramid', 'pillar', 'arch'];
-  const type = types[Math.floor(Math.random() * types.length)];
   const group = new THREE.Group();
 
-  switch (type) {
+  switch (structureType) {
     case 'tower': {
       const h = 3 + Math.random() * 5;
       const w = 0.8 + Math.random() * 1.2;
@@ -178,13 +199,21 @@ export function generateStructure(scene: THREE.Scene, state: WorldState): void {
 
   group.position.set(x, 0, z);
   group.rotation.y = Math.random() * Math.PI * 2;
+
+  // Warm point light near the structure
+  const warmLight = new THREE.PointLight(0xffaa44, 0.4, 12);
+  warmLight.position.set(0, 3, 0);
+  group.add(warmLight);
+
   scene.add(group);
   state.elements.push(group);
+
+  return group;
 }
 
-// ── THE BLEED ───────────────────────────────────────────────────────
+// ── THE BLEED (Edge Placement) ─────────────────────────────────────
 
-export function generateBleed(scene: THREE.Scene, state: WorldState): void {
+export function generateBleed(scene: THREE.Scene, state: WorldState, x: number, z: number): void {
   if (state.hasBleed) return;
   state.hasBleed = true;
 
@@ -243,7 +272,7 @@ export function generateBleed(scene: THREE.Scene, state: WorldState): void {
   }));
   group.add(fog);
 
-  group.position.set(20, 0, 18);
+  group.position.set(x, 0, z);
   scene.add(group);
   state.elements.push(group);
 }

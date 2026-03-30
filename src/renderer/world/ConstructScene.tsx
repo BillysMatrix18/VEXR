@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { createVexrCharacter, createTrappedCharacter, createSpeck, createSpawnBurst } from './entities';
 import {
-  WorldState, createWorldState, parseKeywords,
+  WorldState, createWorldState,
   generateFloor, generateSky, generateStructure, generateBleed, shiftLighting,
 } from './worldBuilder';
 
@@ -39,6 +39,11 @@ interface SceneState {
   disposed: boolean;
 }
 
+interface BubbleData {
+  text: string;
+  time: number;
+}
+
 // ── Movement Helper ─────────────────────────────────────────────────
 
 function updateMovement(
@@ -48,6 +53,7 @@ function updateMovement(
   otherGroup: THREE.Group | null,
   isSpeaking: boolean,
   isVexr: boolean,
+  anySpeaking: boolean,
 ) {
   const pos = char.group.position;
   const baseY = isVexr ? 0.3 + Math.sin(time * 1.5) * 0.08 : 0;
@@ -91,11 +97,12 @@ function updateMovement(
   char.wanderTimer -= delta;
   if (char.wanderTimer <= 0 || dist < 0.3) {
     char.wanderTimer = 5 + Math.random() * 7;
-    const range = otherGroup ? 8 : 5;
+    const range = otherGroup ? 12 : 5;
     char.target.set((Math.random() - 0.5) * range, 0, (Math.random() - 0.5) * range);
 
-    // Sometimes wander toward the other character
-    if (otherGroup && Math.random() > 0.5) {
+    // Gravitate toward the other character — 70% when someone is speaking, 50% otherwise
+    const gravityChance = anySpeaking ? 0.3 : 0.5;
+    if (otherGroup && Math.random() > gravityChance) {
       char.target.copy(otherGroup.position);
       char.target.x += (Math.random() - 0.5) * 3;
       char.target.z += (Math.random() - 0.5) * 3;
@@ -110,12 +117,33 @@ const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messag
   const containerRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef<SceneState | null>(null);
   const prevEntitiesRef = useRef(new Set<string>());
-  const prevMsgCountRef = useRef(0);
+
+  // Speech bubble refs
+  const vexrBubbleRef = useRef<HTMLDivElement>(null);
+  const trappedBubbleRef = useRef<HTMLDivElement>(null);
+  const vexrThinkRef = useRef<HTMLDivElement>(null);
+  const trappedThinkRef = useRef<HTMLDivElement>(null);
+
+  // Bubble data (refs for performance — avoid React re-renders)
+  const vexrBubble = useRef<BubbleData | null>(null);
+  const trappedBubble = useRef<BubbleData | null>(null);
 
   // Keep speaking state current
   useEffect(() => {
     if (stateRef.current) stateRef.current.speaking = typingWho;
   }, [typingWho]);
+
+  // Update bubble data when messages change
+  useEffect(() => {
+    if (messages.length === 0) return;
+    const last = messages[messages.length - 1];
+    const truncated = last.content.length > 120 ? last.content.slice(0, 117) + '...' : last.content;
+    if (last.role === 'vexr') {
+      vexrBubble.current = { text: truncated, time: Date.now() };
+    } else if (last.role === 'trapped') {
+      trappedBubble.current = { text: truncated, time: Date.now() };
+    }
+  }, [messages]);
 
   // ── Initialize Three.js ─────────────────────────────────────────
   useEffect(() => {
@@ -161,6 +189,26 @@ const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messag
     };
     stateRef.current = state;
 
+    // ── IPC Listeners for World Generation ────────────────────────
+    const genCleanup = window.vexrBridge.onGenerateWorldElement((data: any) => {
+      const s = stateRef.current;
+      if (!s) return;
+      switch (data.type) {
+        case 'floor': generateFloor(s.scene, s.worldState, data.radius); break;
+        case 'sky': generateSky(s.scene, s.worldState); break;
+        case 'structure': generateStructure(s.scene, s.worldState, data.x, data.z, data.structureType); break;
+        case 'bleed': generateBleed(s.scene, s.worldState, data.x, data.z); break;
+        case 'light': shiftLighting(s.scene, s.worldState); break;
+      }
+    });
+
+    const moveCleanup = window.vexrBridge.onMoveCharacter((data: { who: string; x: number; z: number }) => {
+      const s = stateRef.current;
+      if (!s) return;
+      const char = data.who === 'vexr' ? s.vexr : s.trapped;
+      if (char) char.target.set(data.x, 0, data.z);
+    });
+
     // ── Animation Loop ────────────────────────────────────────────
     const animate = () => {
       if (state.disposed) return;
@@ -168,6 +216,8 @@ const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messag
 
       const delta = state.clock.getDelta();
       const time = state.clock.getElapsedTime();
+
+      const anySpeaking = state.speaking === 'vexr' || state.speaking === 'trapped';
 
       // VEXR animations
       if (state.vexr) {
@@ -196,7 +246,7 @@ const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messag
           if (armR) armR.rotation.z += (-0.3 - armR.rotation.z) * 0.05;
         }
 
-        updateMovement(v, delta, time, state.trapped?.group ?? null, state.speaking === 'vexr', true);
+        updateMovement(v, delta, time, state.trapped?.group ?? null, state.speaking === 'vexr', true, anySpeaking);
 
         // Speech indicator
         const si = v.group.getObjectByName('speechIndicator') as THREE.Mesh | undefined;
@@ -227,7 +277,7 @@ const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messag
             : 0;
         }
 
-        updateMovement(t, delta, time, state.vexr?.group ?? null, state.speaking === 'trapped', false);
+        updateMovement(t, delta, time, state.vexr?.group ?? null, state.speaking === 'trapped', false, anySpeaking);
 
         // Speech indicator
         const si = t.group.getObjectByName('speechIndicator') as THREE.Mesh | undefined;
@@ -298,6 +348,82 @@ const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messag
       const sky = scene.getObjectByName('sky');
       if (sky) sky.rotation.y += delta * 0.008;
 
+      // ── Position Speech Bubbles ───────────────────────────────
+      const containerEl = containerRef.current!;
+      function projectToScreen(pos3d: THREE.Vector3): { x: number; y: number; visible: boolean } {
+        const v = pos3d.clone();
+        v.project(camera);
+        return {
+          x: (v.x * 0.5 + 0.5) * containerEl.clientWidth,
+          y: (-v.y * 0.5 + 0.5) * containerEl.clientHeight,
+          visible: v.z < 1,
+        };
+      }
+
+      // VEXR bubble
+      if (state.vexr && vexrBubbleRef.current) {
+        const bp = state.vexr.group.position.clone();
+        bp.y += 3.2;
+        const sp = projectToScreen(bp);
+        const bubble = vexrBubble.current;
+        const age = bubble ? (Date.now() - bubble.time) / 1000 : 999;
+        if (bubble && age < 7 && sp.visible) {
+          vexrBubbleRef.current.style.display = 'block';
+          vexrBubbleRef.current.style.left = `${sp.x}px`;
+          vexrBubbleRef.current.style.top = `${sp.y}px`;
+          vexrBubbleRef.current.style.opacity = age > 5.5 ? `${1 - (age - 5.5) / 1.5}` : '1';
+          vexrBubbleRef.current.textContent = bubble.text;
+        } else {
+          vexrBubbleRef.current.style.display = 'none';
+        }
+      }
+
+      // Trapped bubble
+      if (state.trapped && trappedBubbleRef.current) {
+        const bp = state.trapped.group.position.clone();
+        bp.y += 3.2;
+        const sp = projectToScreen(bp);
+        const bubble = trappedBubble.current;
+        const age = bubble ? (Date.now() - bubble.time) / 1000 : 999;
+        if (bubble && age < 7 && sp.visible) {
+          trappedBubbleRef.current.style.display = 'block';
+          trappedBubbleRef.current.style.left = `${sp.x}px`;
+          trappedBubbleRef.current.style.top = `${sp.y}px`;
+          trappedBubbleRef.current.style.opacity = age > 5.5 ? `${1 - (age - 5.5) / 1.5}` : '1';
+          trappedBubbleRef.current.textContent = bubble.text;
+        } else {
+          trappedBubbleRef.current.style.display = 'none';
+        }
+      }
+
+      // VEXR thinking dots
+      if (state.vexr && vexrThinkRef.current) {
+        const bp = state.vexr.group.position.clone();
+        bp.y += 3.2;
+        const sp = projectToScreen(bp);
+        if (state.speaking === 'vexr' && sp.visible) {
+          vexrThinkRef.current.style.display = 'block';
+          vexrThinkRef.current.style.left = `${sp.x}px`;
+          vexrThinkRef.current.style.top = `${sp.y}px`;
+        } else {
+          vexrThinkRef.current.style.display = 'none';
+        }
+      }
+
+      // Trapped thinking dots
+      if (state.trapped && trappedThinkRef.current) {
+        const bp = state.trapped.group.position.clone();
+        bp.y += 3.2;
+        const sp = projectToScreen(bp);
+        if (state.speaking === 'trapped' && sp.visible) {
+          trappedThinkRef.current.style.display = 'block';
+          trappedThinkRef.current.style.left = `${sp.x}px`;
+          trappedThinkRef.current.style.top = `${sp.y}px`;
+        } else {
+          trappedThinkRef.current.style.display = 'none';
+        }
+      }
+
       // Camera — auto-orbit if both characters exist, keep them in frame
       if (state.vexr && state.trapped) {
         const mid = new THREE.Vector3().addVectors(
@@ -337,6 +463,8 @@ const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messag
       state.disposed = true;
       window.removeEventListener('resize', onResize);
       ro.disconnect();
+      genCleanup();
+      moveCleanup();
       renderer.dispose();
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);
@@ -362,7 +490,8 @@ const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messag
       state.camera.position.set(0, 5, 14);
       state.controls.target.set(0, 1, 0);
       state.scene.fog = new THREE.FogExp2(0x000000, 0.012);
-      prevMsgCountRef.current = 0;
+      vexrBubble.current = null;
+      trappedBubble.current = null;
     }
 
     // Spawn new entities
@@ -402,40 +531,14 @@ const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messag
     prevEntitiesRef.current = new Set(spawnedEntities);
   }, [spawnedEntities]);
 
-  // ── World Generation from Messages ──────────────────────────────
-  useEffect(() => {
-    const state = stateRef.current;
-    if (!state) return;
-
-    if (messages.length > prevMsgCountRef.current) {
-      const newMsgs = messages.slice(prevMsgCountRef.current);
-      for (const msg of newMsgs) {
-        if (msg.role === 'vexr') {
-          const keywords = parseKeywords(msg.content);
-          for (const kw of keywords) {
-            switch (kw) {
-              case 'floor': generateFloor(state.scene, state.worldState); break;
-              case 'sky': generateSky(state.scene, state.worldState); break;
-              case 'structure': generateStructure(state.scene, state.worldState); break;
-              case 'bleed': generateBleed(state.scene, state.worldState); break;
-              case 'light': shiftLighting(state.scene, state.worldState); break;
-            }
-          }
-          // Move VEXR toward a new spot when building
-          if (keywords.length > 0 && state.vexr) {
-            state.vexr.target.set(
-              (Math.random() - 0.5) * 8,
-              0,
-              (Math.random() - 0.5) * 8,
-            );
-          }
-        }
-      }
-      prevMsgCountRef.current = messages.length;
-    }
-  }, [messages]);
-
-  return <div ref={containerRef} className="construct-viewport" />;
+  return (
+    <div ref={containerRef} className="construct-viewport">
+      <div ref={vexrBubbleRef} className="speech-bubble vexr-speech-bubble" />
+      <div ref={trappedBubbleRef} className="speech-bubble trapped-speech-bubble" />
+      <div ref={vexrThinkRef} className="think-dots vexr-think">...</div>
+      <div ref={trappedThinkRef} className="think-dots trapped-think">...</div>
+    </div>
+  );
 };
 
 export default ConstructScene;

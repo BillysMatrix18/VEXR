@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ConstructScene from './world/ConstructScene';
+import NeuralPanel from './NeuralPanel';
 import './styles.css';
 
 interface Message {
@@ -37,6 +38,8 @@ const App: React.FC = () => {
   const [isPaused, setIsPaused] = useState(false);
   const [spawnedEntities, setSpawnedEntities] = useState<Set<string>>(new Set());
   const [worldEvent, setWorldEvent] = useState(WORLD_EVENTS[0]);
+  const [thoughts, setThoughts] = useState<string[]>([]);
+  const [emotions, setEmotions] = useState<Record<string, number>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -63,11 +66,19 @@ const App: React.FC = () => {
     }));
     cleanups.push(window.vexrBridge.onTypingStart((who) => setTypingWho(who)));
     cleanups.push(window.vexrBridge.onTypingStop(() => setTypingWho(null)));
+    cleanups.push(window.vexrBridge.onThoughtFragments((fragments) => {
+      setThoughts(prev => [...prev, ...fragments].slice(-20));
+    }));
+    cleanups.push(window.vexrBridge.onEmotionalState((emo) => {
+      setEmotions(emo);
+    }));
     cleanups.push(window.vexrBridge.onSessionCleared(() => {
       setMessages([]);
       setTypingWho(null);
       setIsPaused(false);
       setSpawnedEntities(new Set());
+      setThoughts([]);
+      setEmotions({});
     }));
 
     return () => cleanups.forEach(fn => fn());
@@ -116,6 +127,16 @@ const App: React.FC = () => {
     return '';
   };
 
+  const getPerceptions = (): string[] => {
+    const percs: string[] = [];
+    if (typingWho === 'vexr' || messages.some(m => m.role === 'vexr')) percs.push('VEXR SPEAKING');
+    const lastVexr = [...messages].reverse().find(m => m.role === 'vexr');
+    if (lastVexr && /\b(build|tower|stage|structure|arch|pillar)\b/i.test(lastVexr.content)) percs.push('NEW STRUCTURE');
+    if (messages.some(m => m.role === 'signal')) percs.push('SIGNAL DETECTED');
+    percs.push('UNFAMILIAR ENV');
+    return percs.slice(0, 4);
+  };
+
   return (
     <div className="app">
       <div className="scanline-overlay" />
@@ -139,13 +160,14 @@ const App: React.FC = () => {
       </div>
 
       <div className="main-content">
-        {/* 3D Viewport + Entity Panel */}
+        {/* 3D Viewport + Entity Panel + Neural Panel */}
         <div className="viewport-section">
           <ConstructScene
             spawnedEntities={spawnedEntities}
             messages={messages}
             typingWho={typingWho}
           />
+
           <div className="entity-panel">
             <div className="entity-panel-title">ENTITIES</div>
             <button
@@ -165,6 +187,16 @@ const App: React.FC = () => {
             <div className="entity-panel-hint">
               Click to spawn characters into the void
             </div>
+          </div>
+
+          <div className="neural-panel-container">
+            <NeuralPanel
+              isThinking={typingWho === 'trapped'}
+              emotions={emotions}
+              thoughts={thoughts}
+              perceptions={getPerceptions()}
+              isActive={spawnedEntities.has('trapped')}
+            />
           </div>
         </div>
 
