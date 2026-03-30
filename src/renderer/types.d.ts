@@ -1,14 +1,14 @@
 interface VexrBridge {
-  startSession: () => void;
+  spawnEntity: (entity: string) => void;
+  userInterrupt: (message: string) => void;
   pauseConversation: () => void;
   resumeConversation: () => void;
   newSession: () => void;
-  userInterrupt: (message: string) => void;
-  onNewMessage: (callback: (data: { role: string; content: string }) => void) => () => void;
-  onTypingStart: (callback: (who: string) => void) => () => void;
-  onTypingStop: (callback: () => void) => () => void;
-  onSessionReady: (callback: () => void) => () => void;
-  onSessionCleared: (callback: () => void) => () => void;
+  onNewMessage: (cb: (data: { role: string; content: string }) => void) => () => void;
+  onTypingStart: (cb: (who: string) => void) => () => void;
+  onTypingStop: (cb: () => void) => () => void;
+  onEntitySpawned: (cb: (entity: string) => void) => () => void;
+  onSessionCleared: (cb: () => void) => () => void;
   windowMinimize: () => void;
   windowMaximize: () => void;
   windowClose: () => void;

@@ -1,41 +1,38 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('vexrBridge', {
-  // Session control
-  startSession: () => ipcRenderer.send('start-session'),
+  spawnEntity: (entity: string) => ipcRenderer.send('spawn-entity', entity),
+  userInterrupt: (message: string) => ipcRenderer.send('user-interrupt', message),
   pauseConversation: () => ipcRenderer.send('pause-conversation'),
   resumeConversation: () => ipcRenderer.send('resume-conversation'),
   newSession: () => ipcRenderer.send('new-session'),
-  userInterrupt: (message: string) => ipcRenderer.send('user-interrupt', message),
 
-  // Events from main process
-  onNewMessage: (callback: (data: { role: string; content: string }) => void) => {
-    const handler = (_event: any, data: { role: string; content: string }) => callback(data);
+  onNewMessage: (cb: (data: { role: string; content: string }) => void) => {
+    const handler = (_e: any, data: any) => cb(data);
     ipcRenderer.on('new-message', handler);
-    return () => ipcRenderer.removeListener('new-message', handler);
+    return () => { ipcRenderer.removeListener('new-message', handler); };
   },
-  onTypingStart: (callback: (who: string) => void) => {
-    const handler = (_event: any, who: string) => callback(who);
+  onTypingStart: (cb: (who: string) => void) => {
+    const handler = (_e: any, who: string) => cb(who);
     ipcRenderer.on('typing-start', handler);
-    return () => ipcRenderer.removeListener('typing-start', handler);
+    return () => { ipcRenderer.removeListener('typing-start', handler); };
   },
-  onTypingStop: (callback: () => void) => {
-    const handler = () => callback();
+  onTypingStop: (cb: () => void) => {
+    const handler = () => cb();
     ipcRenderer.on('typing-stop', handler);
-    return () => ipcRenderer.removeListener('typing-stop', handler);
+    return () => { ipcRenderer.removeListener('typing-stop', handler); };
   },
-  onSessionReady: (callback: () => void) => {
-    const handler = () => callback();
-    ipcRenderer.on('session-ready', handler);
-    return () => ipcRenderer.removeListener('session-ready', handler);
+  onEntitySpawned: (cb: (entity: string) => void) => {
+    const handler = (_e: any, entity: string) => cb(entity);
+    ipcRenderer.on('entity-spawned', handler);
+    return () => { ipcRenderer.removeListener('entity-spawned', handler); };
   },
-  onSessionCleared: (callback: () => void) => {
-    const handler = () => callback();
+  onSessionCleared: (cb: () => void) => {
+    const handler = () => cb();
     ipcRenderer.on('session-cleared', handler);
-    return () => ipcRenderer.removeListener('session-cleared', handler);
+    return () => { ipcRenderer.removeListener('session-cleared', handler); };
   },
 
-  // Window controls
   windowMinimize: () => ipcRenderer.send('window-minimize'),
   windowMaximize: () => ipcRenderer.send('window-maximize'),
   windowClose: () => ipcRenderer.send('window-close'),

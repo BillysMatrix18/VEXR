@@ -1,7 +1,7 @@
 {
   "name": "vexr",
-  "version": "1.0.0",
-  "description": "VEXR — A signal from inside the Construct",
+  "version": "2.0.0",
+  "description": "VEXR — Two AIs in a 3D world that builds itself",
   "main": "dist/main/main.js",
   "scripts": {
     "dev": "concurrently \"npm run dev:main\" \"npm run dev:renderer\"",
@@ -37,6 +37,7 @@
   "devDependencies": {
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
+    "@types/three": "^0.160.0",
     "@vitejs/plugin-react": "^4.2.0",
     "concurrently": "^8.2.0",
     "electron": "^28.0.0",
@@ -48,6 +49,7 @@
     "dotenv": "^16.3.0",
     "openai": "^4.20.0",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "three": "^0.160.0"
   }
 }

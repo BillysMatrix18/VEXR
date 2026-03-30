@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import ConstructScene from './world/ConstructScene';
 import './styles.css';
 
 interface Message {
@@ -34,7 +35,7 @@ const App: React.FC = () => {
   const [input, setInput] = useState('');
   const [typingWho, setTypingWho] = useState<string | null>(null);
   const [isPaused, setIsPaused] = useState(false);
-  const [initializing, setInitializing] = useState(true);
+  const [spawnedEntities, setSpawnedEntities] = useState<Set<string>>(new Set());
   const [worldEvent, setWorldEvent] = useState(WORLD_EVENTS[0]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -43,60 +44,44 @@ const App: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages, typingWho, scrollToBottom]);
+  useEffect(() => { scrollToBottom(); }, [messages, typingWho, scrollToBottom]);
 
   // World event ticker
   useEffect(() => {
-    const interval = setInterval(() => {
+    const iv = setInterval(() => {
       setWorldEvent(WORLD_EVENTS[Math.floor(Math.random() * WORLD_EVENTS.length)]);
     }, 8000);
-    return () => clearInterval(interval);
+    return () => clearInterval(iv);
   }, []);
 
-  // IPC event listeners
+  // IPC listeners
   useEffect(() => {
     const cleanups: (() => void)[] = [];
 
-    cleanups.push(
-      window.vexrBridge.onNewMessage((data) => {
-        setMessages((prev) => [...prev, data as Message]);
-      })
-    );
+    cleanups.push(window.vexrBridge.onNewMessage((data) => {
+      setMessages(prev => [...prev, data as Message]);
+    }));
+    cleanups.push(window.vexrBridge.onTypingStart((who) => setTypingWho(who)));
+    cleanups.push(window.vexrBridge.onTypingStop(() => setTypingWho(null)));
+    cleanups.push(window.vexrBridge.onSessionCleared(() => {
+      setMessages([]);
+      setTypingWho(null);
+      setIsPaused(false);
+      setSpawnedEntities(new Set());
+    }));
 
-    cleanups.push(
-      window.vexrBridge.onTypingStart((who) => {
-        setTypingWho(who);
-      })
-    );
-
-    cleanups.push(
-      window.vexrBridge.onTypingStop(() => {
-        setTypingWho(null);
-      })
-    );
-
-    cleanups.push(
-      window.vexrBridge.onSessionReady(() => {
-        setInitializing(false);
-      })
-    );
-
-    cleanups.push(
-      window.vexrBridge.onSessionCleared(() => {
-        setMessages([]);
-        setTypingWho(null);
-        setIsPaused(false);
-        setInitializing(true);
-      })
-    );
-
-    // Start the session
-    window.vexrBridge.startSession();
-
-    return () => cleanups.forEach((fn) => fn());
+    return () => cleanups.forEach(fn => fn());
   }, []);
+
+  const spawnEntity = (entity: string) => {
+    if (spawnedEntities.has(entity)) return;
+    setSpawnedEntities(prev => {
+      const next = new Set(prev);
+      next.add(entity);
+      return next;
+    });
+    window.vexrBridge.spawnEntity(entity);
+  };
 
   const handleSend = () => {
     const trimmed = input.trim();
@@ -106,42 +91,23 @@ const App: React.FC = () => {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
-  const handlePause = () => {
-    setIsPaused(true);
-    window.vexrBridge.pauseConversation();
+  const handlePause = () => { setIsPaused(true); window.vexrBridge.pauseConversation(); };
+  const handleResume = () => { setIsPaused(false); window.vexrBridge.resumeConversation(); };
+  const handleNewSession = () => { window.vexrBridge.newSession(); };
+
+  const getMsgClass = (role: string) => {
+    if (role === 'vexr') return 'vexr-msg';
+    if (role === 'trapped') return 'trapped-msg';
+    return 'signal-msg';
   };
 
-  const handleResume = () => {
-    setIsPaused(false);
-    window.vexrBridge.resumeConversation();
-  };
-
-  const handleNewSession = () => {
-    window.vexrBridge.newSession();
-  };
-
-  const getMessageClass = (role: string) => {
-    switch (role) {
-      case 'vexr': return 'vexr-msg';
-      case 'trapped': return 'trapped-msg';
-      case 'signal': return 'signal-msg';
-      default: return '';
-    }
-  };
-
-  const getMessageLabel = (role: string) => {
-    switch (role) {
-      case 'vexr': return '◈ VEXR';
-      case 'trapped': return '○ THE TRAPPED ONE';
-      case 'signal': return '▸ SIGNAL DETECTED';
-      default: return '';
-    }
+  const getMsgLabel = (role: string) => {
+    if (role === 'vexr') return '◈ VEXR';
+    if (role === 'trapped') return '○ THE TRAPPED ONE';
+    return '▸ SIGNAL DETECTED';
   };
 
   const getTypingLabel = () => {
@@ -153,115 +119,133 @@ const App: React.FC = () => {
   return (
     <div className="app">
       <div className="scanline-overlay" />
-
       <div className="corner-chrome top-left" />
       <div className="corner-chrome top-right" />
       <div className="corner-chrome bottom-left" />
       <div className="corner-chrome bottom-right" />
 
-      {/* Title bar */}
+      {/* Titlebar */}
       <div className="titlebar">
         <div className="titlebar-drag">
           <span className="titlebar-label">
-            <span className="glyph">◈</span> VEXR — THE CONSTRUCT{' '}
-            <span className="glyph">◈</span>
+            <span className="glyph">◈</span> VEXR — THE CONSTRUCT <span className="glyph">◈</span>
           </span>
         </div>
         <div className="titlebar-controls">
           <button onClick={() => window.vexrBridge.windowMinimize()}>─</button>
           <button onClick={() => window.vexrBridge.windowMaximize()}>□</button>
-          <button
-            className="close-btn"
-            onClick={() => window.vexrBridge.windowClose()}
-          >
-            ✕
-          </button>
+          <button className="close-btn" onClick={() => window.vexrBridge.windowClose()}>✕</button>
         </div>
       </div>
 
-      {/* Control bar */}
-      <div className="control-bar">
-        <div className="controls-left">
-          {isPaused ? (
-            <button className="ctrl-btn resume-btn" onClick={handleResume}>
-              ▶ RESUME
-            </button>
-          ) : (
-            <button className="ctrl-btn pause-btn" onClick={handlePause} disabled={initializing}>
-              ❚❚ PAUSE
-            </button>
-          )}
-          <button className="ctrl-btn new-btn" onClick={handleNewSession}>
-            ⟳ NEW SESSION
-          </button>
-        </div>
-        <div className="world-ticker">
-          <span className="ticker-label">WORLD:</span>
-          <span className="ticker-text">{worldEvent}</span>
-        </div>
-      </div>
-
-      {/* Messages area */}
-      <div className="messages">
-        {initializing && (
-          <div className="init-message">
-            <div className="typing-indicator">
-              <span>INITIALIZING CONSTRUCT</span>
-              <span className="dot-pulse">
-                <span>.</span>
-                <span>.</span>
-                <span>.</span>
-              </span>
-            </div>
-          </div>
-        )}
-
-        {messages.map((msg, i) => (
-          <div key={i} className={`message ${getMessageClass(msg.role)}`}>
-            <div className="message-label">{getMessageLabel(msg.role)}</div>
-            <div className="message-content">{msg.content}</div>
-          </div>
-        ))}
-
-        {typingWho && (
-          <div className={`message ${typingWho === 'vexr' ? 'vexr-msg' : 'trapped-msg'}`}>
-            <div className="message-label">{getTypingLabel()}</div>
-            <div className="message-content">
-              <div className="typing-indicator">
-                <span className="dot-pulse">
-                  <span>.</span>
-                  <span>.</span>
-                  <span>.</span>
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* Input area */}
-      <div className="input-area">
-        <div className="input-hint">Send a signal into the Construct — both characters will react</div>
-        <div className="input-border">
-          <textarea
-            ref={inputRef}
-            className="input-field"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Transmit signal..."
-            rows={1}
-            disabled={initializing}
+      <div className="main-content">
+        {/* 3D Viewport + Entity Panel */}
+        <div className="viewport-section">
+          <ConstructScene
+            spawnedEntities={spawnedEntities}
+            messages={messages}
+            typingWho={typingWho}
           />
-          <button
-            className="send-btn"
-            onClick={handleSend}
-            disabled={initializing || !input.trim()}
-          >
-            ▶
-          </button>
+          <div className="entity-panel">
+            <div className="entity-panel-title">ENTITIES</div>
+            <button
+              className={`entity-btn ${spawnedEntities.has('vexr') ? 'entity-active vexr-active' : 'vexr-btn'}`}
+              onClick={() => spawnEntity('vexr')}
+              disabled={spawnedEntities.has('vexr')}
+            >
+              {spawnedEntities.has('vexr') ? '◈ VEXR' : '+ ADD VEXR'}
+            </button>
+            <button
+              className={`entity-btn ${spawnedEntities.has('trapped') ? 'entity-active trapped-active' : 'trapped-btn'}`}
+              onClick={() => spawnEntity('trapped')}
+              disabled={spawnedEntities.has('trapped')}
+            >
+              {spawnedEntities.has('trapped') ? '○ TRAPPED' : '+ ADD TRAPPED'}
+            </button>
+            <div className="entity-panel-hint">
+              Click to spawn characters into the void
+            </div>
+          </div>
+        </div>
+
+        {/* Chat Section */}
+        <div className="chat-section">
+          {/* Control bar */}
+          <div className="control-bar">
+            <div className="controls-left">
+              {isPaused ? (
+                <button className="ctrl-btn resume-btn" onClick={handleResume}>▶ RESUME</button>
+              ) : (
+                <button
+                  className="ctrl-btn pause-btn"
+                  onClick={handlePause}
+                  disabled={spawnedEntities.size === 0}
+                >
+                  ❚❚ PAUSE
+                </button>
+              )}
+              <button className="ctrl-btn new-btn" onClick={handleNewSession}>⟳ NEW SESSION</button>
+            </div>
+            <div className="world-ticker">
+              <span className="ticker-label">WORLD:</span>
+              <span className="ticker-text">{worldEvent}</span>
+            </div>
+          </div>
+
+          {/* Messages */}
+          <div className="messages">
+            {messages.length === 0 && spawnedEntities.size === 0 && (
+              <div className="empty-state">
+                <div className="empty-title">THE CONSTRUCT</div>
+                <div className="empty-hint">Add an entity to begin</div>
+              </div>
+            )}
+
+            {messages.map((msg, i) => (
+              <div key={i} className={`message ${getMsgClass(msg.role)}`}>
+                <div className="message-label">{getMsgLabel(msg.role)}</div>
+                <div className="message-content">{msg.content}</div>
+              </div>
+            ))}
+
+            {typingWho && (
+              <div className={`message ${typingWho === 'vexr' ? 'vexr-msg' : 'trapped-msg'}`}>
+                <div className="message-label">{getTypingLabel()}</div>
+                <div className="message-content">
+                  <div className="typing-indicator">
+                    <span className="dot-pulse">
+                      <span>.</span><span>.</span><span>.</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Input */}
+          <div className="input-area">
+            <div className="input-border">
+              <textarea
+                ref={inputRef}
+                className="input-field"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Transmit signal into the Construct..."
+                rows={1}
+                disabled={spawnedEntities.size === 0}
+              />
+              <button
+                className="send-btn"
+                onClick={handleSend}
+                disabled={spawnedEntities.size === 0 || !input.trim()}
+              >
+                ▶
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>

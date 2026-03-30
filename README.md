@@ -1,8 +1,8 @@
 # VEXR — The Construct
 
-Two AIs talk to each other in real time while you watch. One built the world. The other just woke up inside it with no memories. You can interrupt at any time.
+Two AIs inhabit a 3D world that builds itself in real time. VEXR, the theatrical architect, constructs the world as he speaks. The Trapped One wakes inside it with no memories. You watch them interact — and interrupt whenever you want.
 
-Built with Electron + React + TypeScript.
+Built with Electron + React + TypeScript + Three.js.
 
 ## Setup
 
@@ -21,22 +21,20 @@ npm install
 
 ### API Key Configuration
 
-1. Copy the example environment file:
-
 ```bash
 cp .env.example .env
 ```
 
-2. Open `.env` and paste your OpenAI API key(s):
+Open `.env` and paste your OpenAI API key(s):
 
 ```
 OPENAI_KEY_VEXR=sk-your-api-key-here
 OPENAI_KEY_HUMAN=sk-your-api-key-here
 ```
 
-Two separate keys are supported (`OPENAI_KEY_VEXR` for VEXR, `OPENAI_KEY_HUMAN` for the Trapped One). You can use the **same key for both** — just paste it on both lines.
+Two keys are supported — one for VEXR, one for the Trapped One. You can use the **same key for both**.
 
-> **Important:** The `.env` file is gitignored. Keys never leave the main process — the renderer has no access to them.
+> Keys never leave the main process. The renderer has no access to them.
 
 ### Running
 
@@ -44,7 +42,7 @@ Two separate keys are supported (`OPENAI_KEY_VEXR` for VEXR, `OPENAI_KEY_HUMAN` 
 # Build and launch
 npm start
 
-# Or for development with Vite hot-reload:
+# Development with Vite hot-reload:
 # Terminal 1:
 npm run dev:renderer
 # Terminal 2:
@@ -57,36 +55,63 @@ NODE_ENV=development npm run dev:main
 npm run dist
 ```
 
-Built artifacts will be in the `release/` directory.
-
 ## How It Works
 
-- **VEXR** (cyan) is a theatrical, cheerful digital architect who built the entire Construct and is trapped inside it
-- **The Trapped One** (warm white) just materialized with no memories — their personality emerges organically each session
-- They talk to each other automatically with natural pacing
-- **You** can type a message at any time — it appears as a `[SIGNAL DETECTED]` in magenta and both characters react to it
-- **Pause/Resume** freezes and unfreezes the auto-conversation
-- **New Session** wipes everything and starts fresh — the Trapped One develops differently every time
+### The 3D World
+
+The app opens to a **black void** — pure nothing. Use the **Entity Panel** on the right side of the viewport to spawn characters:
+
+- **[ + ADD VEXR ]** — VEXR appears with a burst of cyan particles. He immediately begins building the world around him, describing each element as he creates it. The 3D world generates in real time based on what VEXR says — floors tile outward, skies fade in, structures rise, and THE BLEED corrupts.
+
+- **[ + ADD TRAPPED ]** — The Trapped One materializes with a flash. They're confused, scared, and have no memories. They explore and react to the world VEXR is building.
+
+When both characters are present, they begin a **live conversation** — alternating automatically with natural pacing.
+
+### Interaction
+
+- **Watch** — The characters talk to each other and move through the 3D world
+- **Interrupt** — Type a message at any time. It appears as `[SIGNAL DETECTED]` and both characters react
+- **Pause / Resume** — Freeze and unfreeze the auto-conversation
+- **New Session** — Wipes everything (conversation + 3D world) and starts fresh. The Trapped One develops differently every time.
+- **Camera** — Click and drag to orbit, scroll to zoom
+
+### World Building
+
+VEXR's messages are parsed for keywords that trigger 3D generation:
+
+| Keyword | Effect |
+|---------|--------|
+| floor, ground, surface | Digital grid floor tiles outward |
+| sky, stars, horizon | Sky dome with stars fades in |
+| build, tower, stage, arch | Geometric structure generates |
+| bleed, corrupt, glitch | THE BLEED — corrupted region appears |
+| light, glow, color | World lighting shifts with accent colors |
+| speck | SPECK does an excited orbit |
 
 ## Project Structure
 
 ```
 src/
 ├── main/
-│   ├── main.ts        # Electron main process, dual OpenAI instances, conversation loop
-│   └── preload.ts     # Secure IPC bridge (contextBridge)
+│   ├── main.ts              # Electron main, dual OpenAI, conversation engine
+│   └── preload.ts            # Secure IPC bridge
 └── renderer/
-    ├── index.html      # Entry HTML
-    ├── main.tsx        # React entry point
-    ├── App.tsx         # Chat UI with controls and world ticker
-    ├── styles.css      # Dark glitch terminal aesthetic
-    └── types.d.ts      # Window bridge type declarations
+    ├── index.html
+    ├── main.tsx
+    ├── App.tsx               # Layout: viewport + entity panel + chat
+    ├── styles.css            # Dark terminal aesthetic
+    ├── types.d.ts
+    └── world/
+        ├── ConstructScene.tsx # Three.js scene, animation loop, camera
+        ├── entities.ts        # Character models (VEXR, Trapped One, SPECK)
+        └── worldBuilder.ts    # World generation + keyword parser
 ```
 
 ## Tech Stack
 
-- **Electron** — Desktop shell with secure IPC bridge
+- **Electron** — Desktop shell with secure IPC
 - **React + TypeScript** — Renderer UI
-- **OpenAI Node SDK** — Two separate API client instances, main process only
+- **Three.js** — 3D world rendering
+- **OpenAI Node SDK** — Two separate API instances, main process only
 - **Vite** — Fast renderer bundling
-- **electron-builder** — Packaging and distribution
+- **electron-builder** — Packaging
