@@ -477,15 +477,17 @@ body,
 }
 .mute-btn {
   font-size: 9px;
+  min-width: 60px;
 }
 .mute-btn:hover:not(:disabled) {
   border-color: var(--cyan);
   color: var(--cyan);
+  background: rgba(0, 255, 225, 0.05);
 }
 .mute-btn.muted {
-  border-color: var(--text-dim);
-  color: var(--text-dim);
-  opacity: 0.6;
+  border-color: var(--magenta);
+  color: var(--magenta);
+  background: rgba(255, 60, 172, 0.08);
 }
 
 /* World ticker */

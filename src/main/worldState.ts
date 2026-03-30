@@ -1,5 +1,4 @@
 import { parseKeywords } from './config';
-import { searchAndDownloadModel } from './sketchfab';
 
 // ── World State Data ────────────────────────────────────────────────
 
@@ -106,6 +105,10 @@ function processBuildQueue() {
   executeBuild(next.kw, next.send);
 }
 
+export function isBuilding(): boolean {
+  return isBuildingInProgress;
+}
+
 export function onBuildComplete() {
   isBuildingInProgress = false;
   processBuildQueue();
@@ -124,30 +127,22 @@ function executeBuild(kw: string, send: (ch: string, d?: any) => void) {
   // Move VEXR to build site first
   send('move-character', { who: 'vexr', x: pos.x, z: pos.z });
 
-  // Small delay so VEXR arrives before construction starts
+  // Delay so VEXR arrives before construction starts
   setTimeout(() => {
     if (isStructureType(kw)) {
       worldState.structures.push({ type: kw, x: pos.x, z: pos.z, description: kw });
-      searchAndDownloadModel(`${kw} low poly fantasy`, send).then((modelPath) => {
-        if (modelPath) {
-          send('generate-world-element', { type: 'model', modelPath, x: pos.x, z: pos.z, name: kw, animate: true });
-        } else {
-          send('generate-world-element', { type: 'structure', structureType: kw, x: pos.x, z: pos.z, animate: true });
-        }
-      }).catch(() => {
-        send('generate-world-element', { type: 'structure', structureType: kw, x: pos.x, z: pos.z, animate: true });
-      });
+      send('generate-world-element', { type: 'structure', structureType: kw, x: pos.x, z: pos.z, animate: true });
     } else if (isTerrainType(kw)) {
       worldState.terrain.push({ type: kw, x: pos.x, z: pos.z, description: `${kw} terrain` });
       send('generate-world-element', { type: 'terrain', terrainType: kw, x: pos.x, z: pos.z, animate: true });
     }
-    // Mark build complete after animation time (4 seconds)
-    setTimeout(() => onBuildComplete(), 4000);
+    // Mark build complete after animation time (5 seconds)
+    setTimeout(() => onBuildComplete(), 5000);
   }, 800);
 }
 
 function isStructureType(kw: string): boolean {
-  return ['house', 'tower', 'bridge', 'wall', 'gate', 'arch', 'stage', 'structure', 'well', 'fountain', 'stairs', 'ruins', 'path', 'lamp'].includes(kw);
+  return ['castle', 'house', 'tower', 'bridge', 'wall', 'gate', 'arch', 'stage', 'structure', 'well', 'fountain', 'stairs', 'ruins', 'path', 'lamp'].includes(kw);
 }
 
 function isTerrainType(kw: string): boolean {
@@ -202,7 +197,7 @@ export function processVexrMessageForWorldGen(
       }
 
       // ── Structures (queued, one at a time) ──────────────────
-      case 'house': case 'tower': case 'bridge': case 'wall': case 'gate':
+      case 'castle': case 'house': case 'tower': case 'bridge': case 'wall': case 'gate':
       case 'arch': case 'stage': case 'structure': case 'well': case 'fountain':
       case 'stairs': case 'ruins': case 'path': case 'lamp': {
         if (worldState.structures.length < 20) {

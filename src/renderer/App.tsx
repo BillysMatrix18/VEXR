@@ -302,7 +302,7 @@ const App: React.FC = () => {
                 className={`ctrl-btn mute-btn ${isMuted ? 'muted' : ''}`}
                 onClick={handleMuteToggle}
               >
-                {isMuted ? '🔇 MUTED' : '🔊 VOICE'}
+                {isMuted ? 'UNMUTE' : 'MUTE'}
               </button>
             </div>
             <div className="world-ticker">

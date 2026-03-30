@@ -1,7 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { createVexrCharacter, createTrappedCharacter, createSpeck, createSpawnBurst } from './entities';
 import {
   WorldState, createWorldState,
@@ -244,42 +243,6 @@ const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messag
         case 'nature': generateNature(s.scene, s.worldState, data.x, data.z, data.natureType); break;
         case 'bleed': generateBleed(s.scene, s.worldState, data.x, data.z); break;
         case 'light': shiftLighting(s.scene, s.worldState); break;
-        case 'model': {
-          const loader = new GLTFLoader();
-          try {
-            loader.load(`file://${data.modelPath}`, (gltf) => {
-              const model = gltf.scene;
-              // Count triangles
-              let triCount = 0;
-              model.traverse((child) => {
-                if ((child as THREE.Mesh).isMesh) {
-                  const geo = (child as THREE.Mesh).geometry;
-                  triCount += geo.index ? geo.index.count / 3 : geo.attributes.position.count / 3;
-                }
-              });
-              // Skip if exceeds 5000 triangles
-              if (triCount > 5000) {
-                console.log(`[VEXR] Model too heavy (${triCount} tris), using primitive`);
-                generateStructure(s.scene, s.worldState, data.x, data.z, data.name || 'structure');
-                return;
-              }
-              model.position.set(data.x, 0, data.z);
-              const box = new THREE.Box3().setFromObject(model);
-              const size = box.getSize(new THREE.Vector3());
-              const maxDim = Math.max(size.x, size.y, size.z);
-              const scale = maxDim > 5 ? 5 / maxDim : 1;
-              model.scale.setScalar(scale);
-              s.scene.add(model);
-              s.worldState.elements.push(model);
-              s.worldState.structureCount++;
-            }, undefined, () => {
-              generateStructure(s.scene, s.worldState, data.x, data.z, data.name || 'structure');
-            });
-          } catch {
-            generateStructure(s.scene, s.worldState, data.x, data.z, data.name || 'structure');
-          }
-          break;
-        }
       }
     });
 

@@ -11,7 +11,6 @@ import {
 } from './conversation';
 import { resetWorldState } from './worldState';
 import { setTtsMuted } from './tts';
-import { resetSceneTriCount } from './sketchfab';
 
 // ── Window ──────────────────────────────────────────────────────────
 
@@ -71,7 +70,6 @@ app.whenReady().then(() => {
   ipcMain.on('resume-conversation', () => resumeConversation());
   ipcMain.on('new-session', () => {
     resetWorldState();
-    resetSceneTriCount();
     newSession();
   });
 

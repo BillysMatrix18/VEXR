@@ -157,6 +157,63 @@ export function generateStructure(scene: THREE.Scene, state: WorldState, x: numb
   const group = new THREE.Group();
 
   switch (structureType) {
+    case 'castle': {
+      // Foundation platform
+      const foundation = new THREE.Mesh(new THREE.BoxGeometry(10, 0.4, 10), solidMat());
+      foundation.position.y = 0.2;
+      group.add(foundation);
+      // Main keep — tall box in center
+      const keep = new THREE.Mesh(new THREE.BoxGeometry(3, 5, 3), solidMat());
+      keep.position.y = 2.9;
+      group.add(keep);
+      // Keep roof
+      const keepRoof = new THREE.Mesh(new THREE.ConeGeometry(2.5, 2, 4), warmMat());
+      keepRoof.position.y = 5.9;
+      keepRoof.rotation.y = Math.PI / 4;
+      group.add(keepRoof);
+      // 4 corner towers
+      const towerPositions = [[-4, -4], [-4, 4], [4, -4], [4, 4]];
+      for (const [tx, tz] of towerPositions) {
+        const tower = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.9, 4.5, 6), solidMat());
+        tower.position.set(tx, 2.65, tz);
+        group.add(tower);
+        const cap = new THREE.Mesh(new THREE.ConeGeometry(1, 1.5, 6), warmMat());
+        cap.position.set(tx, 5.15, tz);
+        group.add(cap);
+      }
+      // Walls connecting towers
+      const wallDefs = [[[-4, -4], [4, -4]], [[4, -4], [4, 4]], [[4, 4], [-4, 4]], [[-4, 4], [-4, -4]]];
+      for (const [[ax, az], [bx, bz]] of wallDefs) {
+        const wallLen = Math.sqrt((bx - ax) ** 2 + (bz - az) ** 2);
+        const wall = new THREE.Mesh(new THREE.BoxGeometry(wallLen, 3, 0.4), solidMat());
+        wall.position.set((ax + bx) / 2, 1.9, (az + bz) / 2);
+        wall.rotation.y = Math.atan2(bx - ax, bz - az);
+        group.add(wall);
+        // Crenellations
+        for (let ci = 0; ci < 4; ci++) {
+          const t = (ci + 0.5) / 4;
+          const cren = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.5, 0.5), solidMat());
+          const cx = ax + (bx - ax) * t;
+          const cz = az + (bz - az) * t;
+          cren.position.set(cx, 3.65, cz);
+          group.add(cren);
+        }
+      }
+      // Gate arch at front
+      const gateL = new THREE.Mesh(new THREE.BoxGeometry(0.6, 3, 0.6), solidMat());
+      gateL.position.set(-1, 1.9, -5);
+      const gateR = gateL.clone(); gateR.position.set(1, 1.9, -5);
+      const gateTop = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.5, 0.6), solidMat());
+      gateTop.position.set(0, 3.6, -5);
+      group.add(gateL, gateR, gateTop);
+      // Courtyard floor
+      const courtyard = new THREE.Mesh(new THREE.PlaneGeometry(7, 7), new THREE.MeshStandardMaterial({ color: 0x0a1210, metalness: 0.6, roughness: 0.5 }));
+      courtyard.rotation.x = -Math.PI / 2;
+      courtyard.position.y = 0.42;
+      group.add(courtyard);
+      addWarmLight(group, 5.5);
+      break;
+    }
     case 'house': {
       const base = new THREE.Mesh(new THREE.BoxGeometry(2.5, 2, 2), solidMat());
       base.position.y = 1;

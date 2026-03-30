@@ -7,6 +7,7 @@ import {
 import {
   getWorldState, getWorldStateSummary,
   processVexrMessageForWorldGen, processTrappedMessageForMovement,
+  isBuilding,
 } from './worldState';
 import { generateAndSendTTS, setTtsSendToRenderer } from './tts';
 
@@ -243,7 +244,7 @@ async function generateReply(who: 'vexr' | 'trapped', messages: ChatMessage[]): 
       model: 'gpt-4o',
       messages,
       temperature: 0.92,
-      max_tokens: who === 'vexr' ? 800 : 600,
+      max_tokens: who === 'vexr' ? 200 : 400,
     });
     return response.choices[0]?.message?.content ?? '[...]';
   } catch (error: any) {
@@ -271,6 +272,11 @@ function afterTrappedMessage(reply: string) {
 export async function runMonologueStep(who: 'vexr' | 'trapped') {
   if (isPaused || isProcessing) return;
   if (activeEntities.size !== 1) return;
+  // Wait for any build to finish before next conversation turn
+  if (isBuilding()) {
+    loopTimeout = setTimeout(() => runMonologueStep(who), 1000);
+    return;
+  }
   isProcessing = true;
 
   send('typing-start', who);
@@ -296,6 +302,11 @@ export async function runMonologueStep(who: 'vexr' | 'trapped') {
 export async function runDualStep(nextSpeaker: 'vexr' | 'trapped') {
   if (isPaused || isProcessing) return;
   if (activeEntities.size !== 2) return;
+  // Wait for any build to finish before next conversation turn
+  if (isBuilding()) {
+    loopTimeout = setTimeout(() => runDualStep(nextSpeaker), 1000);
+    return;
+  }
   isProcessing = true;
 
   // For the Trapped One, generate thoughts/emotions first
@@ -326,7 +337,10 @@ export async function runDualStep(nextSpeaker: 'vexr' | 'trapped') {
 
   const next: 'vexr' | 'trapped' = nextSpeaker === 'vexr' ? 'trapped' : 'vexr';
   if (!isPaused && activeEntities.size === 2) {
-    loopTimeout = setTimeout(() => runDualStep(next), getNextDelay());
+    // After VEXR, give Trapped One a shorter delay so they respond promptly
+    // After Trapped One, VEXR can take longer (may trigger silence period)
+    const delay = nextSpeaker === 'vexr' ? (2000 + Math.random() * 2000) : getNextDelay();
+    loopTimeout = setTimeout(() => runDualStep(next), delay);
   }
 }
 
