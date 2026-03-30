@@ -69,6 +69,46 @@ export function resetWorldState(): void {
   zoneAngles = [0, 0, 0, 0];
 }
 
+// ── User Signal Command Parser (instant world changes) ──────────────
+
+export function parseUserSignalCommands(
+  message: string,
+  send: (channel: string, data?: any) => void,
+): void {
+  const l = message.toLowerCase();
+
+  // Delete/clear/reset/wipe → clear all generated objects
+  if (/\b(delete|clear|reset|wipe|destroy|remove)\s*(everything|all|world|it all)?\b/.test(l)) {
+    clearWorld(send);
+  }
+
+  // Direct sky commands from user
+  const skyPreset = parseSkyPreset(l);
+  if (skyPreset || /\b(sky|change.*sky|make.*sky)\b/.test(l)) {
+    const preset = skyPreset ?? 'night';
+    worldState.hasSky = true;
+    worldState.skyPreset = preset;
+    send('generate-world-element', { type: 'sky-change', preset });
+    if (!worldState.hasSky) {
+      send('generate-world-element', { type: 'sky' });
+    }
+  }
+
+  // Direct weather commands
+  const weather = parseWeather(l);
+  if (weather) {
+    send('generate-world-element', { type: 'weather', weather });
+  }
+}
+
+function clearWorld(send: (channel: string, data?: any) => void): void {
+  worldState = createFreshWorldState();
+  isBuildingInProgress = false;
+  buildQueue = [];
+  zoneAngles = [0, 0, 0, 0];
+  send('clear-world', {});
+}
+
 // ── World State Summary ─────────────────────────────────────────────
 
 function dir(x: number, z: number): string {

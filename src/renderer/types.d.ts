@@ -17,6 +17,9 @@ interface VexrBridge {
   onTypingStop: (cb: () => void) => () => void;
   onEntitySpawned: (cb: (entity: string) => void) => () => void;
   onSessionCleared: (cb: () => void) => () => void;
+  onClearWorld: (cb: () => void) => () => void;
+  sendSnapshot: (base64: string) => void;
+  onRequestSnapshot: (cb: () => void) => () => void;
   onGenerateWorldElement: (cb: (data: any) => void) => () => void;
   onMoveCharacter: (cb: (data: { who: string; x: number; z: number }) => void) => () => void;
   onThoughtFragments: (cb: (fragments: string[]) => void) => () => void;

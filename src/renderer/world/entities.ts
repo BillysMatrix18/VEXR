@@ -24,17 +24,19 @@ export function loadVexrModel(
 ): void {
   const loader = new GLTFLoader();
 
-  // Try multiple paths — dev (publicDir served by vite) and built
-  const paths = ['./VEXR.glb', '../models/VEXR.glb', 'VEXR.glb'];
+  // publicDir in vite serves models/ → /VEXR.glb from root
+  // In built app → models/VEXR.glb relative to index.html
+  const paths = ['/VEXR.glb', './VEXR.glb', 'VEXR.glb', '../models/VEXR.glb', '../../models/VEXR.glb'];
 
   let attempted = 0;
   function tryNext() {
     if (attempted >= paths.length) {
-      console.warn('[VEXR] GLB not found at any path, using primitive model');
+      console.warn('[VEXR] GLB not found at any path, using primitive model. Tried:', paths);
       onFallback();
       return;
     }
     const p = paths[attempted++];
+    console.log(`[VEXR] Trying to load GLB from: "${p}" (attempt ${attempted}/${paths.length})`);
     loader.load(
       p,
       (gltf) => {
@@ -42,7 +44,22 @@ export function loadVexrModel(
         model.name = 'vexrGLB';
         model.scale.setScalar(0.015);
 
-        // Add cyan rim light / glow
+        // Log all bone/node names for debugging
+        console.log('[VEXR] GLB loaded successfully from:', p);
+        console.log('[VEXR] Model nodes:');
+        model.traverse((child) => {
+          if (child.name) console.log(`  - ${child.type}: "${child.name}"`);
+        });
+
+        // Enable shadows on all meshes
+        model.traverse((child) => {
+          if ((child as THREE.Mesh).isMesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+          }
+        });
+
+        // Cyan rim light / glow
         const glow = new THREE.PointLight(0x00ffe1, 0.6, 6);
         glow.position.y = 1.5;
         model.add(glow);
@@ -57,11 +74,13 @@ export function loadVexrModel(
         speechRing.name = 'speechIndicator';
         model.add(speechRing);
 
-        console.log('[VEXR] GLB model loaded from:', p);
         onSuccess(model);
       },
       undefined,
-      () => tryNext(),
+      (err) => {
+        console.log(`[VEXR] Failed to load from "${p}":`, err);
+        tryNext();
+      },
     );
   }
   tryNext();

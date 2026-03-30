@@ -7,7 +7,7 @@ import {
 import {
   getWorldState, getWorldStateSummary,
   processVexrMessageForWorldGen, processTrappedMessageForMovement,
-  isBuilding,
+  isBuilding, parseUserSignalCommands,
 } from './worldState';
 import { generateAndSendTTS, setTtsSendToRenderer } from './tts';
 import { getMemorySummary, recordBuild, recordTrappedReaction, recordNickname, endSession } from './memory';
@@ -78,9 +78,25 @@ let lastEmotions: Record<string, number> = {};
 // ── Reference Image for VEXR ────────────────────────────────────────
 
 let pendingImage: { base64: string; mimeType: string } | null = null;
+let pendingSnapshot: string | null = null;
 
 export function setPendingImage(base64: string, mimeType: string) {
   pendingImage = { base64, mimeType };
+}
+
+export function setPendingSnapshot(base64: string) {
+  pendingSnapshot = base64 || null;
+}
+
+async function requestSceneSnapshot(): Promise<string | null> {
+  pendingSnapshot = null;
+  send('request-snapshot', {});
+  // Wait up to 500ms for snapshot
+  for (let i = 0; i < 10; i++) {
+    await new Promise(r => setTimeout(r, 50));
+    if (pendingSnapshot) return pendingSnapshot;
+  }
+  return null;
 }
 
 async function generateThoughtsAndEmotions(): Promise<{
@@ -135,7 +151,7 @@ function getEmotionalContext(emotions: Record<string, number>): string {
 
 // ── Message Building ────────────────────────────────────────────────
 
-function buildMessagesFor(who: 'vexr' | 'trapped', emotionalCtx?: string): ChatMessage[] {
+function buildMessagesFor(who: 'vexr' | 'trapped', emotionalCtx?: string, snapshot?: string | null): ChatMessage[] {
   const basePrompt = who === 'vexr' ? VEXR_SYSTEM_PROMPT : TRAPPED_SYSTEM_PROMPT;
   const worldCtx = getWorldStateSummary();
   const emoCtx = who === 'trapped' && emotionalCtx ? emotionalCtx : '';
@@ -185,12 +201,23 @@ function buildMessagesFor(who: 'vexr' | 'trapped', emotionalCtx?: string): ChatM
   // Inject reference image for VEXR if available (GPT-4o vision)
   if (who === 'vexr' && pendingImage) {
     const img = pendingImage;
-    pendingImage = null; // Use once
+    pendingImage = null;
     msgs.push({
       role: 'user',
       content: [
-        { type: 'text', text: '[A reference image has been transmitted from outside the Construct. Use it as creative inspiration for what you build next. Describe what you see and start building it!]' },
+        { type: 'text', text: '[A reference image has been transmitted from outside the Construct. Use it as creative inspiration for what you build next.]' },
         { type: 'image_url', image_url: { url: `data:${img.mimeType};base64,${img.base64}` } },
+      ] as any,
+    });
+  }
+
+  // Inject scene snapshot so character sees what is actually in the world
+  if (snapshot) {
+    msgs.push({
+      role: 'user',
+      content: [
+        { type: 'text', text: '[This is what you currently see from where you are standing. React only to what is visible.]' },
+        { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${snapshot}` } },
       ] as any,
     });
   }
@@ -335,7 +362,10 @@ export async function runDualStep(nextSpeaker: 'vexr' | 'trapped') {
 
   send('typing-start', nextSpeaker);
 
-  const msgs = buildMessagesFor(nextSpeaker, emotionalCtx);
+  // Request scene snapshot for character POV vision
+  const snapshot = await requestSceneSnapshot();
+
+  const msgs = buildMessagesFor(nextSpeaker, emotionalCtx, snapshot);
   const reply = await generateReply(nextSpeaker, msgs);
 
   if (isPaused) { isProcessing = false; send('typing-stop'); return; }
@@ -351,8 +381,6 @@ export async function runDualStep(nextSpeaker: 'vexr' | 'trapped') {
 
   const next: 'vexr' | 'trapped' = nextSpeaker === 'vexr' ? 'trapped' : 'vexr';
   if (!isPaused && activeEntities.size === 2) {
-    // After VEXR, give Trapped One a shorter delay so they respond promptly
-    // After Trapped One, VEXR can take longer (may trigger silence period)
     const delay = nextSpeaker === 'vexr' ? (2000 + Math.random() * 2000) : getNextDelay();
     loopTimeout = setTimeout(() => runDualStep(next), delay);
   }
@@ -400,6 +428,9 @@ export async function handleUserInterrupt(message: string) {
   if (isProcessing) {
     await new Promise(r => setTimeout(r, 300));
   }
+
+  // Execute direct commands BEFORE AI responds (instant world changes)
+  parseUserSignalCommands(message, send);
 
   sharedHistory.push({ role: 'signal', content: message });
   send('new-message', { role: 'signal', content: message });

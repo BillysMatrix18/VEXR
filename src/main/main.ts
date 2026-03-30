@@ -9,6 +9,7 @@ import {
   newSession,
   setPendingImage,
   setSilenced,
+  setPendingSnapshot,
 } from './conversation';
 import { resetWorldState } from './worldState';
 import { setTtsMuted } from './tts';
@@ -70,6 +71,10 @@ app.whenReady().then(() => {
   });
   ipcMain.on('reference-image', (_event, data: { base64: string; mimeType: string }) => {
     setPendingImage(data.base64, data.mimeType);
+  });
+  // Scene snapshot relay
+  ipcMain.on('scene-snapshot', (_event, base64: string) => {
+    setPendingSnapshot(base64);
   });
   ipcMain.on('pause-conversation', () => pauseConversation());
   ipcMain.on('resume-conversation', () => resumeConversation());

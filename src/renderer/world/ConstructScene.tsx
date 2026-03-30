@@ -193,8 +193,8 @@ const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messag
     if (!container) return;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x000000);
-    scene.fog = new THREE.FogExp2(0x000000, 0.012);
+    scene.background = new THREE.Color(0x0a0a18); // deep midnight blue, not pure black
+    scene.fog = new THREE.FogExp2(0x0a0a18, 0.008); // subtle distance fade
 
     const camera = new THREE.PerspectiveCamera(
       55, container.clientWidth / container.clientHeight, 0.1, 500,
@@ -205,7 +205,9 @@ const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messag
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.2;
+    renderer.toneMappingExposure = 1.4;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     container.appendChild(renderer.domElement);
 
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -216,19 +218,61 @@ const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messag
     controls.minDistance = 3;
     controls.maxDistance = 50;
 
-    // Faint ambient (void state — barely visible)
-    const ambient = new THREE.AmbientLight(0xffffff, 0.12);
+    // Hemisphere light — sky color above, ground color below
+    const hemiLight = new THREE.HemisphereLight(0x4488aa, 0x222211, 0.6);
+    scene.add(hemiLight);
+
+    // Directional sun — casts shadows
+    const sunLight = new THREE.DirectionalLight(0xffeedd, 1.5);
+    sunLight.position.set(15, 25, 10);
+    sunLight.castShadow = true;
+    sunLight.shadow.mapSize.width = 2048;
+    sunLight.shadow.mapSize.height = 2048;
+    sunLight.shadow.camera.near = 0.5;
+    sunLight.shadow.camera.far = 80;
+    sunLight.shadow.camera.left = -40;
+    sunLight.shadow.camera.right = 40;
+    sunLight.shadow.camera.top = 40;
+    sunLight.shadow.camera.bottom = -40;
+    sunLight.name = 'sunLight';
+    scene.add(sunLight);
+
+    // Ambient fill
+    const ambient = new THREE.AmbientLight(0x334455, 0.3);
     scene.add(ambient);
 
-    // Base ground plane — always present so characters never float in void
+    // Base ground — rich dark green, matte
     const baseGround = new THREE.Mesh(
       new THREE.PlaneGeometry(200, 200),
-      new THREE.MeshStandardMaterial({ color: 0x030308, metalness: 0.9, roughness: 0.5 }),
+      new THREE.MeshStandardMaterial({ color: 0x0a1a0f, roughness: 1.0, metalness: 0.0 }),
     );
     baseGround.rotation.x = -Math.PI / 2;
     baseGround.position.y = -0.02;
+    baseGround.receiveShadow = true;
     baseGround.name = 'baseGround';
     scene.add(baseGround);
+
+    // Faint grid lines on ground
+    const gridHelper = new THREE.GridHelper(200, 100, 0x0a150a, 0x0a150a);
+    (gridHelper.material as THREE.Material).transparent = true;
+    (gridHelper.material as THREE.Material).opacity = 0.15;
+    gridHelper.position.y = -0.01;
+    scene.add(gridHelper);
+
+    // Default stars (visible even before VEXR builds sky)
+    const starCount = 500;
+    const starPos = new Float32Array(starCount * 3);
+    for (let i = 0; i < starCount; i++) {
+      const t = Math.random() * Math.PI * 2, p = Math.acos(Math.random()), r = 180 + Math.random() * 15;
+      starPos[i * 3] = r * Math.sin(p) * Math.cos(t);
+      starPos[i * 3 + 1] = r * Math.cos(p);
+      starPos[i * 3 + 2] = r * Math.sin(p) * Math.sin(t);
+    }
+    const starGeo = new THREE.BufferGeometry();
+    starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+    const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0x6688bb, size: 0.3, transparent: true, opacity: 0.4 }));
+    stars.name = 'defaultStars';
+    scene.add(stars);
 
     const state: SceneState = {
       scene, camera, renderer, controls,
@@ -271,15 +315,30 @@ const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messag
         case 'bleed': generateBleed(s.scene, s.worldState, data.x, data.z); break;
         case 'light': shiftLighting(s.scene, s.worldState); break;
         case 'sky-change': {
+          const targetColor = new THREE.Color(SKY_COLORS[data.preset] ?? 0x0a0a18);
+          // Store target for smooth lerp in animation loop
+          s.scene.userData.skyTarget = targetColor;
+          // Also update sky dome if exists
           const skyObj = s.scene.getObjectByName('sky') as THREE.Mesh | undefined;
           if (skyObj) {
-            const targetColor = SKY_COLORS[data.preset] ?? 0x040a14;
-            (skyObj.material as THREE.MeshBasicMaterial).color.set(targetColor);
+            (skyObj.material as THREE.MeshBasicMaterial).color.copy(targetColor);
           }
-          // Adjust ambient light for mood
+          // Update lighting mood
+          const sunL = s.scene.getObjectByName('sunLight') as THREE.DirectionalLight | undefined;
+          if (data.preset === 'night' || data.preset === 'void') {
+            if (sunL) sunL.intensity = 0.2;
+          } else if (data.preset === 'day') {
+            if (sunL) sunL.intensity = 2.0;
+          } else if (data.preset === 'sunset' || data.preset === 'sunrise') {
+            if (sunL) { sunL.intensity = 1.2; sunL.color.set(0xffaa66); }
+          } else if (data.preset === 'storm') {
+            if (sunL) sunL.intensity = 0.3;
+          } else {
+            if (sunL) sunL.intensity = 1.0;
+          }
           s.scene.traverse((c) => {
             if (c instanceof THREE.AmbientLight) {
-              c.intensity = data.preset === 'night' ? 0.08 : data.preset === 'day' ? 0.35 : data.preset === 'storm' ? 0.06 : 0.15;
+              c.intensity = data.preset === 'night' ? 0.1 : data.preset === 'day' ? 0.4 : data.preset === 'storm' ? 0.08 : 0.2;
             }
           });
           break;
@@ -317,6 +376,77 @@ const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messag
       if (!s) return;
       const char = data.who === 'vexr' ? s.vexr : s.trapped;
       if (char) char.target.set(data.x, 0, data.z);
+    });
+
+    // ── Clear World Handler ─────────────────────────────────────────
+    const clearCleanup = window.vexrBridge.onClearWorld(() => {
+      const s = stateRef.current;
+      if (!s) return;
+      for (const el of s.worldState.elements) {
+        s.scene.remove(el);
+        el.traverse((child) => {
+          if ((child as THREE.Mesh).isMesh) {
+            const m = child as THREE.Mesh;
+            m.geometry?.dispose();
+            if (Array.isArray(m.material)) m.material.forEach(mt => mt.dispose());
+            else m.material?.dispose();
+          }
+        });
+      }
+      for (const el of s.worldState.floorElements) s.scene.remove(el);
+      s.worldState = createWorldState();
+      // Remove weather
+      const wp = s.scene.getObjectByName('weatherParticles');
+      if (wp) s.scene.remove(wp);
+      // Reset sky/fog to default
+      (s.scene.background as THREE.Color).set(0x0a0a18);
+      if (s.scene.fog instanceof THREE.FogExp2) s.scene.fog.color.set(0x0a0a18);
+      s.scene.userData.skyTarget = null;
+    });
+
+    // ── Snapshot Handler (for character POV vision) ────────────────
+    const snapshotCleanup = window.vexrBridge.onRequestSnapshot(() => {
+      const s = stateRef.current;
+      if (!s) return;
+      // Render a small offscreen snapshot from character POV
+      const char = s.vexr || s.trapped;
+      if (!char) { window.vexrBridge.sendSnapshot(''); return; }
+
+      const snapCam = new THREE.PerspectiveCamera(70, 256 / 192, 0.1, 200);
+      const pos = char.group.position.clone();
+      pos.y += 1.8; // eye level
+      snapCam.position.copy(pos);
+      // Face the direction the character is facing
+      const dir = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), char.group.rotation.y);
+      snapCam.lookAt(pos.clone().add(dir.multiplyScalar(10)));
+
+      const snapTarget = new THREE.WebGLRenderTarget(256, 192);
+      s.renderer.setRenderTarget(snapTarget);
+      s.renderer.render(s.scene, snapCam);
+      s.renderer.setRenderTarget(null);
+
+      // Read pixels to canvas
+      const buffer = new Uint8Array(256 * 192 * 4);
+      s.renderer.readRenderTargetPixels(snapTarget, 0, 0, 256, 192, buffer);
+      const canvas = document.createElement('canvas');
+      canvas.width = 256; canvas.height = 192;
+      const ctx = canvas.getContext('2d')!;
+      const imgData = ctx.createImageData(256, 192);
+      // Flip Y
+      for (let y = 0; y < 192; y++) {
+        for (let x = 0; x < 256; x++) {
+          const si = ((191 - y) * 256 + x) * 4;
+          const di = (y * 256 + x) * 4;
+          imgData.data[di] = buffer[si];
+          imgData.data[di + 1] = buffer[si + 1];
+          imgData.data[di + 2] = buffer[si + 2];
+          imgData.data[di + 3] = 255;
+        }
+      }
+      ctx.putImageData(imgData, 0, 0);
+      const base64 = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
+      snapTarget.dispose();
+      window.vexrBridge.sendSnapshot(base64);
     });
 
     // ── Animation Loop ────────────────────────────────────────────
@@ -523,6 +653,15 @@ const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messag
       const sky = scene.getObjectByName('sky');
       if (sky) sky.rotation.y += delta * 0.008;
 
+      // Smooth sky/fog color lerp toward target
+      if (scene.userData.skyTarget) {
+        const bg = scene.background as THREE.Color;
+        bg.lerp(scene.userData.skyTarget, delta * 0.8); // ~3 second transition
+        if (scene.fog instanceof THREE.FogExp2) {
+          (scene.fog as THREE.FogExp2).color.copy(bg);
+        }
+      }
+
       // ── Position Speech Bubbles ───────────────────────────────
       const containerEl = containerRef.current!;
       function projectToScreen(pos3d: THREE.Vector3): { x: number; y: number; visible: boolean } {
@@ -659,6 +798,8 @@ const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messag
       ro.disconnect();
       genCleanup();
       moveCleanup();
+      clearCleanup();
+      snapshotCleanup();
       renderer.dispose();
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);

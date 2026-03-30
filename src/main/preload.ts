@@ -39,6 +39,17 @@ contextBridge.exposeInMainWorld('vexrBridge', {
     ipcRenderer.on('session-cleared', handler);
     return () => { ipcRenderer.removeListener('session-cleared', handler); };
   },
+  onClearWorld: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on('clear-world', handler);
+    return () => { ipcRenderer.removeListener('clear-world', handler); };
+  },
+  sendSnapshot: (base64: string) => ipcRenderer.send('scene-snapshot', base64),
+  onRequestSnapshot: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on('request-snapshot', handler);
+    return () => { ipcRenderer.removeListener('request-snapshot', handler); };
+  },
   onGenerateWorldElement: (cb: (data: any) => void) => {
     const handler = (_e: any, data: any) => cb(data);
     ipcRenderer.on('generate-world-element', handler);

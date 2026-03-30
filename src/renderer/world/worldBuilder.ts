@@ -16,23 +16,36 @@ export function createWorldState(): WorldState {
   return { floorRadius: 0, floorElements: [], hasSky: false, hasBleed: false, structureCount: 0, lightShifted: false, elements: [] };
 }
 
-// ── Shared Materials ────────────────────────────────────────────────
+// ── Shared Materials (proper colors, no teal tint) ──────────────────
 
-const solidMat = () => new THREE.MeshStandardMaterial({ color: 0x0a1520, emissive: 0x00ffe1, emissiveIntensity: 0.03, metalness: 0.7, roughness: 0.3 });
-const wireMat = () => new THREE.MeshBasicMaterial({ color: 0x00ffe1, wireframe: true, transparent: true, opacity: 0.1 });
-const warmMat = () => new THREE.MeshStandardMaterial({ color: 0x1a1510, emissive: 0xffaa44, emissiveIntensity: 0.04, metalness: 0.4, roughness: 0.6 });
-const woodMat = () => new THREE.MeshStandardMaterial({ color: 0x3a2510, emissive: 0x442200, emissiveIntensity: 0.02, metalness: 0.2, roughness: 0.8 });
-const leafMat = () => new THREE.MeshStandardMaterial({ color: 0x0a3020, emissive: 0x00ff88, emissiveIntensity: 0.06, metalness: 0.2, roughness: 0.7 });
-const stoneMat = () => new THREE.MeshStandardMaterial({ color: 0x1a1a20, emissive: 0x00ffe1, emissiveIntensity: 0.01, metalness: 0.5, roughness: 0.8 });
+const solidMat = () => new THREE.MeshStandardMaterial({ color: 0x556677, roughness: 0.85, metalness: 0.0 }); // grey stone
+const warmMat = () => new THREE.MeshStandardMaterial({ color: 0x884422, roughness: 0.7, metalness: 0.0 }); // warm roof/brick
+const woodMat = () => new THREE.MeshStandardMaterial({ color: 0x5a3518, roughness: 0.85, metalness: 0.0 }); // brown wood
+const leafMat = () => new THREE.MeshStandardMaterial({ color: 0x2a6635, roughness: 0.8, metalness: 0.0 }); // green foliage
+const stoneMat = () => new THREE.MeshStandardMaterial({ color: 0x556060, roughness: 0.9, metalness: 0.0 }); // stone
+const wallMat = () => new THREE.MeshStandardMaterial({ color: 0xbb9966, roughness: 0.75, metalness: 0.0 }); // wall plaster
+const windowMat = () => new THREE.MeshStandardMaterial({ color: 0xffffcc, emissive: 0xffddaa, emissiveIntensity: 0.3 }); // glowing window
+const waterMat = () => new THREE.MeshStandardMaterial({ color: 0x2266aa, roughness: 0.1, metalness: 0.1, transparent: true, opacity: 0.7, emissive: 0x1144aa, emissiveIntensity: 0.05 });
+
+function enableShadows(group: THREE.Group) {
+  group.traverse((c) => {
+    if ((c as THREE.Mesh).isMesh) {
+      c.castShadow = true;
+      c.receiveShadow = true;
+    }
+  });
+}
 
 function addWarmLight(group: THREE.Group, y: number = 3) {
-  const l = new THREE.PointLight(0xffaa44, 0.4, 12);
+  const l = new THREE.PointLight(0xffaa44, 0.5, 15);
   l.position.set(0, y, 0);
   group.add(l);
 }
 
 function placeGroup(scene: THREE.Scene, state: WorldState, group: THREE.Group, x: number, z: number) {
   group.position.set(x, 0, z);
+  group.scale.multiplyScalar(1.5); // Scale up for more substantial feel
+  enableShadows(group);
   scene.add(group);
   state.elements.push(group);
   state.structureCount++;
@@ -217,12 +230,12 @@ export function generateStructure(scene: THREE.Scene, state: WorldState, x: numb
       break;
     }
     case 'house': {
-      const base = new THREE.Mesh(new THREE.BoxGeometry(2.5, 2, 2), solidMat());
+      const base = new THREE.Mesh(new THREE.BoxGeometry(2.5, 2, 2), sm());
       base.position.y = 1;
       const roof = new THREE.Mesh(new THREE.ConeGeometry(2.2, 1.5, 4), warmMat());
       roof.position.y = 2.75;
       roof.rotation.y = Math.PI / 4;
-      const win1 = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.05), new THREE.MeshBasicMaterial({ color: 0x00ffe1 }));
+      const win1 = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.05), windowMat());
       win1.position.set(-0.5, 1.2, 1.01);
       const win2 = win1.clone(); win2.position.set(0.5, 1.2, 1.01);
       const chimney = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 1, 6), stoneMat());
@@ -456,7 +469,7 @@ export function generateNature(scene: THREE.Scene, state: WorldState, x: number,
     case 'water': {
       const water = new THREE.Mesh(
         new THREE.CircleGeometry(5 + Math.random() * 3, 16),
-        new THREE.MeshStandardMaterial({ color: 0x003344, emissive: 0x0066aa, emissiveIntensity: 0.1, metalness: 0.9, roughness: 0.2, transparent: true, opacity: 0.7 })
+        waterMat(),
       );
       water.rotation.x = -Math.PI / 2;
       water.position.y = -0.05;
