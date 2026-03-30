@@ -2,6 +2,7 @@ interface VexrBridge {
   spawnEntity: (entity: string) => void;
   userInterrupt: (message: string) => void;
   setMuted: (muted: boolean) => void;
+  setSilenced: (silenced: boolean) => void;
   sendReferenceImage: (base64: string, mimeType: string) => void;
   pauseConversation: () => void;
   resumeConversation: () => void;

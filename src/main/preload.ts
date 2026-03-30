@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('vexrBridge', {
   spawnEntity: (entity: string) => ipcRenderer.send('spawn-entity', entity),
   userInterrupt: (message: string) => ipcRenderer.send('user-interrupt', message),
   setMuted: (muted: boolean) => ipcRenderer.send('set-muted', muted),
+  setSilenced: (silenced: boolean) => ipcRenderer.send('set-silenced', silenced),
   sendReferenceImage: (base64: string, mimeType: string) => ipcRenderer.send('reference-image', { base64, mimeType }),
   pauseConversation: () => ipcRenderer.send('pause-conversation'),
   resumeConversation: () => ipcRenderer.send('resume-conversation'),

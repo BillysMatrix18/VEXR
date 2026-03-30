@@ -153,8 +153,10 @@ export function generateTerrain(scene: THREE.Scene, state: WorldState, x: number
 
 // ── Structures ──────────────────────────────────────────────────────
 
-export function generateStructure(scene: THREE.Scene, state: WorldState, x: number, z: number, structureType: string): void {
+export function generateStructure(scene: THREE.Scene, state: WorldState, x: number, z: number, structureType: string, colorOverride?: number | null): void {
   const group = new THREE.Group();
+  // Override default material color if specified
+  const sm = colorOverride ? () => new THREE.MeshStandardMaterial({ color: colorOverride, emissive: colorOverride, emissiveIntensity: 0.03, metalness: 0.5, roughness: 0.4 }) : solidMat;
 
   switch (structureType) {
     case 'castle': {

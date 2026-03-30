@@ -272,6 +272,32 @@ body,
   color: var(--warm-white);
   background: rgba(240, 230, 211, 0.04);
 }
+/* Camera controls */
+.camera-controls {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.cam-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-family: 'Space Mono', monospace;
+  font-size: 7px;
+  letter-spacing: 0.5px;
+  padding: 3px 4px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease;
+}
+.cam-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+.cam-btn.cam-active {
+  border-color: var(--cyan);
+  color: var(--cyan);
+  background: rgba(0, 255, 225, 0.06);
+}
+
 /* Image reference feed */
 .image-feed-section {
   margin-top: 6px;
@@ -488,6 +514,32 @@ body,
   border-color: var(--magenta);
   color: var(--magenta);
   background: rgba(255, 60, 172, 0.08);
+}
+.silence-btn {
+  font-size: 9px;
+  min-width: 70px;
+  border-color: var(--magenta);
+  color: var(--magenta);
+}
+.silence-btn:hover:not(:disabled) {
+  background: rgba(255, 60, 172, 0.08);
+}
+.silence-btn.silenced {
+  background: rgba(255, 60, 172, 0.15);
+  color: var(--magenta);
+  animation: pulse-glow-magenta 2s ease-in-out infinite;
+}
+@keyframes pulse-glow-magenta {
+  0%, 100% { box-shadow: 0 0 4px rgba(255, 60, 172, 0.1); }
+  50% { box-shadow: 0 0 12px rgba(255, 60, 172, 0.3); }
+}
+.silenced-indicator {
+  text-align: center;
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: var(--magenta);
+  padding: 6px;
+  opacity: 0.6;
 }
 
 /* World ticker */

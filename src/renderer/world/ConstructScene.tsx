@@ -17,6 +17,7 @@ interface ConstructSceneProps {
   spawnedEntities: Set<string>;
   messages: Message[];
   typingWho: string | null;
+  cameraMode: string;
 }
 
 interface CharState {
@@ -140,10 +141,17 @@ function startBuildAnimation(state: SceneState, group: THREE.Group) {
   state.bursts.push({ group: burst, startTime: state.clock.getElapsedTime() });
 }
 
-const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messages, typingWho }) => {
+const SKY_COLORS: Record<string, number> = {
+  sunrise: 0x442211, sunset: 0x331122, night: 0x040a14, day: 0x1a3050,
+  storm: 0x111118, aurora: 0x0a2020, void: 0x000000,
+};
+
+const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messages, typingWho, cameraMode }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef<SceneState | null>(null);
   const prevEntitiesRef = useRef(new Set<string>());
+  const cameraModeRef = useRef(cameraMode);
+  cameraModeRef.current = cameraMode;
 
   // Speech bubble refs
   const vexrBubbleRef = useRef<HTMLDivElement>(null);
@@ -205,6 +213,16 @@ const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messag
     const ambient = new THREE.AmbientLight(0xffffff, 0.12);
     scene.add(ambient);
 
+    // Base ground plane — always present so characters never float in void
+    const baseGround = new THREE.Mesh(
+      new THREE.PlaneGeometry(200, 200),
+      new THREE.MeshStandardMaterial({ color: 0x030308, metalness: 0.9, roughness: 0.5 }),
+    );
+    baseGround.rotation.x = -Math.PI / 2;
+    baseGround.position.y = -0.02;
+    baseGround.name = 'baseGround';
+    scene.add(baseGround);
+
     const state: SceneState = {
       scene, camera, renderer, controls,
       clock: new THREE.Clock(),
@@ -225,7 +243,7 @@ const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messag
         case 'floor': generateFloor(s.scene, s.worldState, data.radius); break;
         case 'sky': generateSky(s.scene, s.worldState); break;
         case 'structure': {
-          generateStructure(s.scene, s.worldState, data.x, data.z, data.structureType);
+          generateStructure(s.scene, s.worldState, data.x, data.z, data.structureType, data.color);
           if (data.animate) {
             const lastEl = s.worldState.elements[s.worldState.elements.length - 1];
             if (lastEl) startBuildAnimation(s, lastEl as THREE.Group);
@@ -243,6 +261,45 @@ const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messag
         case 'nature': generateNature(s.scene, s.worldState, data.x, data.z, data.natureType); break;
         case 'bleed': generateBleed(s.scene, s.worldState, data.x, data.z); break;
         case 'light': shiftLighting(s.scene, s.worldState); break;
+        case 'sky-change': {
+          const skyObj = s.scene.getObjectByName('sky') as THREE.Mesh | undefined;
+          if (skyObj) {
+            const targetColor = SKY_COLORS[data.preset] ?? 0x040a14;
+            (skyObj.material as THREE.MeshBasicMaterial).color.set(targetColor);
+          }
+          // Adjust ambient light for mood
+          s.scene.traverse((c) => {
+            if (c instanceof THREE.AmbientLight) {
+              c.intensity = data.preset === 'night' ? 0.08 : data.preset === 'day' ? 0.35 : data.preset === 'storm' ? 0.06 : 0.15;
+            }
+          });
+          break;
+        }
+        case 'weather': {
+          // Remove existing weather particles
+          const existing = s.scene.getObjectByName('weatherParticles');
+          if (existing) s.scene.remove(existing);
+          if (data.weather === 'clear') break;
+          const count = 500;
+          const pPos = new Float32Array(count * 3);
+          for (let i = 0; i < count; i++) {
+            pPos[i * 3] = (Math.random() - 0.5) * 60;
+            pPos[i * 3 + 1] = Math.random() * 20;
+            pPos[i * 3 + 2] = (Math.random() - 0.5) * 60;
+          }
+          const wGeo = new THREE.BufferGeometry();
+          wGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+          const colors: Record<string, number> = { rain: 0x6688aa, snow: 0xddddff, embers: 0xff6622, sparkles: 0x00ffe1 };
+          const sizes: Record<string, number> = { rain: 0.1, snow: 0.2, embers: 0.15, sparkles: 0.12 };
+          const wPts = new THREE.Points(wGeo, new THREE.PointsMaterial({
+            color: colors[data.weather] ?? 0xffffff,
+            size: sizes[data.weather] ?? 0.1,
+            transparent: true, opacity: 0.6,
+          }));
+          wPts.name = 'weatherParticles';
+          s.scene.add(wPts);
+          break;
+        }
       }
     });
 
@@ -491,21 +548,40 @@ const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messag
         }
       }
 
-      // Camera — auto-orbit if both characters exist, keep them in frame
-      if (state.vexr && state.trapped) {
-        const mid = new THREE.Vector3().addVectors(
-          state.vexr.group.position, state.trapped.group.position,
-        ).multiplyScalar(0.5);
-        mid.y = 1;
-        controls.target.lerp(mid, 0.02);
-      } else if (state.vexr) {
-        const t = state.vexr.group.position.clone();
-        t.y = 1;
-        controls.target.lerp(t, 0.02);
-      } else if (state.trapped) {
-        const t = state.trapped.group.position.clone();
-        t.y = 1;
-        controls.target.lerp(t, 0.02);
+      // Camera modes
+      const cm = cameraModeRef.current;
+      if (cm === 'follow-vexr' && state.vexr) {
+        const vp = state.vexr.group.position;
+        const behind = new THREE.Vector3(vp.x - 3, vp.y + 4, vp.z + 6);
+        camera.position.lerp(behind, 0.03);
+        controls.target.lerp(new THREE.Vector3(vp.x, 1, vp.z), 0.05);
+      } else if (cm === 'follow-trapped' && state.trapped) {
+        const tp = state.trapped.group.position;
+        const behind = new THREE.Vector3(tp.x - 3, tp.y + 3, tp.z + 5);
+        camera.position.lerp(behind, 0.03);
+        controls.target.lerp(new THREE.Vector3(tp.x, 1, tp.z), 0.05);
+      } else if (cm === 'cinematic') {
+        const orbitR = 18;
+        const orbitY = 8;
+        const speed = 0.08;
+        camera.position.lerp(new THREE.Vector3(Math.cos(time * speed) * orbitR, orbitY, Math.sin(time * speed) * orbitR), 0.02);
+        const lookAt = state.vexr ? state.vexr.group.position.clone() : new THREE.Vector3(0, 1, 0);
+        lookAt.y = 1;
+        controls.target.lerp(lookAt, 0.02);
+      } else if (cm === 'overview') {
+        camera.position.lerp(new THREE.Vector3(0, 30, 0.1), 0.03);
+        controls.target.lerp(new THREE.Vector3(0, 0, 0), 0.03);
+      } else {
+        // free mode — default orbit behavior
+        if (state.vexr && state.trapped) {
+          const mid = new THREE.Vector3().addVectors(state.vexr.group.position, state.trapped.group.position).multiplyScalar(0.5);
+          mid.y = 1;
+          controls.target.lerp(mid, 0.02);
+        } else if (state.vexr) {
+          controls.target.lerp(new THREE.Vector3(state.vexr.group.position.x, 1, state.vexr.group.position.z), 0.02);
+        } else if (state.trapped) {
+          controls.target.lerp(new THREE.Vector3(state.trapped.group.position.x, 1, state.trapped.group.position.z), 0.02);
+        }
       }
 
       controls.update();

@@ -102,12 +102,36 @@ The right panel visualizes the Trapped One's internal thought process:
 
 The Trapped One persistently wonders about the boundaries of the Construct, tests edges, asks VEXR uncomfortable questions about limits and exits. VEXR cheerfully deflects. This tension builds naturally over the conversation.
 
+### Sky & Environment
+
+VEXR controls the environment through conversation:
+- **Sky presets**: sunrise, sunset, night, day, storm, aurora, void
+- **Weather**: rain, snow, embers, sparkles, clear
+- **Colors**: Name a color when building and structures spawn in that color
+
+### Camera Modes
+
+Switch with buttons or keyboard shortcuts 1-5:
+1. **FREE** — Orbit controls, drag freely
+2. **FOLLOW VEXR** — Third-person behind VEXR
+3. **FOLLOW TRAPPED** — Third-person behind the Trapped One
+4. **CINEMATIC** — Slow auto-orbit finding interesting angles
+5. **OVERVIEW** — Top-down view of the whole world
+
+### VEXR Memory System
+
+VEXR remembers across sessions. A `vexr_memory.json` file saves:
+- Things he has built, nicknames given, trapped one's reactions
+- His building style evolves over multiple sessions
+- Inject memory summary into his system prompt each session
+
 ### Controls
 
 - **Pause / Resume** — Freeze the conversation
-- **New Session** — Wipe everything and start fresh
+- **New Session** — Save memory then wipe everything
 - **Mute** — Toggle AI voices (zero API cost when muted)
-- **Camera** — Click drag to orbit, scroll to zoom
+- **Silence** — Stop ALL AI API calls. Characters still move. Magenta button
+- **Camera** — Click drag to orbit, or use camera mode buttons/keyboard 1-5
 
 ## Project Structure
 
@@ -117,7 +141,7 @@ src/
 │   ├── main.ts              # App entry, window, IPC handlers
 │   ├── config.ts            # OpenAI clients, system prompts, keyword parser
 │   ├── tts.ts               # TTS voice generation (skips when muted)
-│   ├── sketchfab.ts         # Sketchfab API search + model download
+│   ├── memory.ts            # Persistent VEXR memory across sessions
 │   ├── worldState.ts        # World state tracking, build cursor, generation logic
 │   ├── conversation.ts      # Conversation loop, thought/emotion gen, silence
 │   └── preload.ts           # Secure IPC bridge

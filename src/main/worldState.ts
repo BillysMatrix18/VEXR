@@ -1,17 +1,15 @@
-import { parseKeywords } from './config';
+import { parseKeywords, parseColor, parseSkyPreset, parseWeather } from './config';
 
 // ── World State Data ────────────────────────────────────────────────
 
 export interface StructureRecord {
-  type: string;
-  x: number;
-  z: number;
-  description: string;
+  type: string; x: number; z: number; description: string; zone: number;
 }
 
 export interface WorldStateData {
   floorRadius: number;
   hasSky: boolean;
+  skyPreset: string;
   structures: StructureRecord[];
   terrain: StructureRecord[];
   nature: StructureRecord[];
@@ -23,52 +21,52 @@ export interface WorldStateData {
 }
 
 let worldState: WorldStateData = createFreshWorldState();
-let buildCursorAngle = 0;
-let buildCursorDist = 3;
 let isBuildingInProgress = false;
-let buildQueue: Array<{ kw: string; send: (ch: string, d?: any) => void }> = [];
+let buildQueue: Array<{ kw: string; color: number | null; send: (ch: string, d?: any) => void }> = [];
+
+// ── Zone system — ring distances from center ────────────────────────
+// Zone 0: 0-5 (Core Stage)  Zone 1: 5-12 (Village)  Zone 2: 12-20 (Nature)  Zone 3: 20+ (Wilderness)
+const ZONE_RANGES = [5, 12, 20, 30];
+
+function getZoneForType(kw: string): number {
+  const zone0 = ['stage'];
+  const zone1 = ['house', 'castle', 'tower', 'well', 'fountain', 'lamp', 'path', 'gate', 'wall', 'stairs', 'arch', 'structure', 'bridge'];
+  const zone2 = ['tree', 'rocks', 'flowers', 'grass', 'water', 'hill', 'plain'];
+  // zone3: mountain, cliff, valley, ruins, bleed
+  if (zone0.includes(kw)) return 0;
+  if (zone1.includes(kw)) return 1;
+  if (zone2.includes(kw)) return 2;
+  return 3;
+}
+
+// Angle counter per zone for spiral placement
+let zoneAngles = [0, 0, 0, 0];
+
+function getZonePosition(zone: number): { x: number; z: number } {
+  const minR = zone === 0 ? 0 : ZONE_RANGES[zone - 1];
+  const maxR = ZONE_RANGES[zone];
+  const r = minR + Math.random() * (maxR - minR);
+  zoneAngles[zone] += 0.8 + Math.random() * 0.6;
+  const a = zoneAngles[zone];
+  return { x: Math.cos(a) * r, z: Math.sin(a) * r };
+}
 
 export function createFreshWorldState(): WorldStateData {
   return {
-    floorRadius: 0,
-    hasSky: false,
-    structures: [],
-    terrain: [],
-    nature: [],
-    hasBleed: false,
-    bleedPosition: null,
-    hasLighting: false,
-    hasWater: false,
-    hasFog: false,
+    floorRadius: 0, hasSky: false, skyPreset: 'void',
+    structures: [], terrain: [], nature: [],
+    hasBleed: false, bleedPosition: null,
+    hasLighting: false, hasWater: false, hasFog: false,
   };
 }
 
-export function getWorldState(): WorldStateData {
-  return worldState;
-}
+export function getWorldState(): WorldStateData { return worldState; }
 
 export function resetWorldState(): void {
   worldState = createFreshWorldState();
-  buildCursorAngle = 0;
-  buildCursorDist = 3;
   isBuildingInProgress = false;
   buildQueue = [];
-}
-
-// ── Build Cursor ────────────────────────────────────────────────────
-
-function advanceBuildCursor(): { x: number; z: number } {
-  buildCursorAngle += 0.7 + Math.random() * 0.6;
-  buildCursorDist = Math.min(buildCursorDist + 1.5 + Math.random() * 2, 28);
-  return {
-    x: Math.cos(buildCursorAngle) * buildCursorDist,
-    z: Math.sin(buildCursorAngle) * buildCursorDist,
-  };
-}
-
-function nearBuildCursor(spread: number = 3): { x: number; z: number } {
-  const base = { x: Math.cos(buildCursorAngle) * buildCursorDist, z: Math.sin(buildCursorAngle) * buildCursorDist };
-  return { x: base.x + (Math.random() - 0.5) * spread, z: base.z + (Math.random() - 0.5) * spread };
+  zoneAngles = [0, 0, 0, 0];
 }
 
 // ── World State Summary ─────────────────────────────────────────────
@@ -84,59 +82,56 @@ function dir(x: number, z: number): string {
 
 export function getWorldStateSummary(): string {
   const parts: string[] = [];
-  if (worldState.floorRadius > 0) parts.push(`Cyan grid floor extends ${worldState.floorRadius} units from center`);
-  if (worldState.hasSky) parts.push('Dark sky dome with cyan stars overhead');
+  if (worldState.floorRadius > 0) parts.push(`Ground extends ${worldState.floorRadius} units`);
+  if (worldState.hasSky) parts.push(`Sky: ${worldState.skyPreset}`);
   for (const s of worldState.structures) parts.push(`${s.description} to the ${dir(s.x, s.z)}`);
   for (const t of worldState.terrain) parts.push(`${t.description} to the ${dir(t.x, t.z)}`);
-  for (const n of worldState.nature) parts.push(`${n.description} to the ${dir(n.x, n.z)}`);
-  if (worldState.hasWater) parts.push('A body of water reflects nearby');
-  if (worldState.hasFog) parts.push('Fog drifts through low areas');
+  const treeCount = worldState.nature.filter(n => n.type === 'tree').length;
+  if (treeCount > 0) parts.push(`${treeCount} trees scattered in the natural zone`);
+  if (worldState.hasWater) parts.push('A body of water');
+  if (worldState.hasFog) parts.push('Fog drifts through');
   if (worldState.hasBleed && worldState.bleedPosition) parts.push(`THE BLEED at the ${dir(worldState.bleedPosition.x, worldState.bleedPosition.z)} edge`);
-  if (worldState.hasLighting) parts.push('Warm lights illuminate structures');
+  if (worldState.hasLighting) parts.push('Warm lights on structures');
   if (parts.length === 0) return '\n\nCURRENT WORLD STATE: Empty void — nothing built yet.';
   return '\n\nCURRENT WORLD STATE: ' + parts.join('. ') + '.';
 }
 
-// ── Build Queue (one at a time) ─────────────────────────────────────
+// ── Build Queue ─────────────────────────────────────────────────────
 
 function processBuildQueue() {
   if (isBuildingInProgress || buildQueue.length === 0) return;
   const next = buildQueue.shift()!;
-  executeBuild(next.kw, next.send);
+  executeBuild(next.kw, next.color, next.send);
 }
 
-export function isBuilding(): boolean {
-  return isBuildingInProgress;
-}
+export function isBuilding(): boolean { return isBuildingInProgress; }
 
 export function onBuildComplete() {
   isBuildingInProgress = false;
   processBuildQueue();
 }
 
-function queueBuild(kw: string, send: (ch: string, d?: any) => void) {
-  buildQueue.push({ kw, send });
+function queueBuild(kw: string, color: number | null, send: (ch: string, d?: any) => void) {
+  buildQueue.push({ kw, color, send });
   processBuildQueue();
 }
 
-function executeBuild(kw: string, send: (ch: string, d?: any) => void) {
+function executeBuild(kw: string, color: number | null, send: (ch: string, d?: any) => void) {
   isBuildingInProgress = true;
-  const pos = advanceBuildCursor();
+  const zone = getZoneForType(kw);
+  const pos = getZonePosition(zone);
   autoExpandFloor(pos.x, pos.z, send);
 
-  // Move VEXR to build site first
   send('move-character', { who: 'vexr', x: pos.x, z: pos.z });
 
-  // Delay so VEXR arrives before construction starts
   setTimeout(() => {
     if (isStructureType(kw)) {
-      worldState.structures.push({ type: kw, x: pos.x, z: pos.z, description: kw });
-      send('generate-world-element', { type: 'structure', structureType: kw, x: pos.x, z: pos.z, animate: true });
+      worldState.structures.push({ type: kw, x: pos.x, z: pos.z, description: kw, zone });
+      send('generate-world-element', { type: 'structure', structureType: kw, x: pos.x, z: pos.z, animate: true, color });
     } else if (isTerrainType(kw)) {
-      worldState.terrain.push({ type: kw, x: pos.x, z: pos.z, description: `${kw} terrain` });
+      worldState.terrain.push({ type: kw, x: pos.x, z: pos.z, description: `${kw} terrain`, zone });
       send('generate-world-element', { type: 'terrain', terrainType: kw, x: pos.x, z: pos.z, animate: true });
     }
-    // Mark build complete after animation time (5 seconds)
     setTimeout(() => onBuildComplete(), 5000);
   }, 800);
 }
@@ -167,11 +162,24 @@ export function processVexrMessageForWorldGen(
   send: (channel: string, data?: any) => void,
 ): void {
   const keywords = parseKeywords(message);
+  const color = parseColor(message);
+  const skyPreset = parseSkyPreset(message);
+  const weather = parseWeather(message);
+
+  // Environment commands (immediate, no build queue)
+  if (skyPreset) {
+    worldState.hasSky = true;
+    worldState.skyPreset = skyPreset;
+    send('generate-world-element', { type: 'sky-change', preset: skyPreset });
+  }
+  if (weather) {
+    send('generate-world-element', { type: 'weather', weather });
+  }
+
   if (keywords.length === 0) return;
 
   for (const kw of keywords) {
     switch (kw) {
-      // ── Floor / Sky ─────────────────────────────────────────
       case 'floor': {
         const newR = Math.min(worldState.floorRadius + 10, 60);
         if (newR > worldState.floorRadius) {
@@ -183,42 +191,33 @@ export function processVexrMessageForWorldGen(
       case 'sky': {
         if (!worldState.hasSky) {
           worldState.hasSky = true;
+          worldState.skyPreset = 'night';
           send('generate-world-element', { type: 'sky' });
         }
         break;
       }
 
-      // ── Terrain (queued, one at a time) ─────────────────────
       case 'mountain': case 'hill': case 'cliff': case 'valley': case 'plain': {
-        if (worldState.terrain.length < 6) {
-          queueBuild(kw, send);
-        }
+        if (worldState.terrain.length < 6) queueBuild(kw, color, send);
         break;
       }
 
-      // ── Structures (queued, one at a time) ──────────────────
       case 'castle': case 'house': case 'tower': case 'bridge': case 'wall': case 'gate':
       case 'arch': case 'stage': case 'structure': case 'well': case 'fountain':
       case 'stairs': case 'ruins': case 'path': case 'lamp': {
-        if (worldState.structures.length < 20) {
-          queueBuild(kw, send);
-        }
+        if (worldState.structures.length < 20) queueBuild(kw, color, send);
         break;
       }
 
-      // ── Nature ──────────────────────────────────────────────
       case 'tree': {
         if (worldState.nature.filter(n => n.type === 'tree').length < 15) {
-          // Place a cluster of 3-5 trees near cursor
           const count = 3 + Math.floor(Math.random() * 3);
           for (let i = 0; i < count; i++) {
-            const pos = nearBuildCursor(6);
-            worldState.nature.push({ type: 'tree', x: pos.x, z: pos.z, description: 'tree' });
+            const pos = getZonePosition(2);
+            worldState.nature.push({ type: 'tree', x: pos.x, z: pos.z, description: 'tree', zone: 2 });
             send('generate-world-element', { type: 'nature', natureType: 'tree', x: pos.x, z: pos.z });
             autoExpandFloor(pos.x, pos.z, send);
           }
-          const center = nearBuildCursor(0);
-          send('move-character', { who: 'vexr', x: center.x, z: center.z });
         }
         break;
       }
@@ -226,11 +225,10 @@ export function processVexrMessageForWorldGen(
         if (worldState.nature.filter(n => n.type === 'rocks').length < 10) {
           const count = 2 + Math.floor(Math.random() * 3);
           for (let i = 0; i < count; i++) {
-            const pos = nearBuildCursor(5);
-            worldState.nature.push({ type: 'rocks', x: pos.x, z: pos.z, description: 'rock cluster' });
+            const pos = getZonePosition(2);
+            worldState.nature.push({ type: 'rocks', x: pos.x, z: pos.z, description: 'rock cluster', zone: 2 });
             send('generate-world-element', { type: 'nature', natureType: 'rocks', x: pos.x, z: pos.z });
           }
-          break;
         }
         break;
       }
@@ -238,8 +236,8 @@ export function processVexrMessageForWorldGen(
         if (worldState.nature.filter(n => n.type === kw).length < 8) {
           const count = 4 + Math.floor(Math.random() * 4);
           for (let i = 0; i < count; i++) {
-            const pos = nearBuildCursor(8);
-            worldState.nature.push({ type: kw, x: pos.x, z: pos.z, description: kw });
+            const pos = getZonePosition(Math.random() > 0.5 ? 1 : 2);
+            worldState.nature.push({ type: kw, x: pos.x, z: pos.z, description: kw, zone: 2 });
             send('generate-world-element', { type: 'nature', natureType: kw, x: pos.x, z: pos.z });
           }
         }
@@ -248,7 +246,7 @@ export function processVexrMessageForWorldGen(
       case 'water': {
         if (!worldState.hasWater) {
           worldState.hasWater = true;
-          const pos = advanceBuildCursor();
+          const pos = getZonePosition(2);
           send('move-character', { who: 'vexr', x: pos.x, z: pos.z });
           send('generate-world-element', { type: 'nature', natureType: 'water', x: pos.x, z: pos.z });
           autoExpandFloor(pos.x, pos.z, send);
@@ -262,13 +260,12 @@ export function processVexrMessageForWorldGen(
         }
         break;
       }
-
-      // ── Special ─────────────────────────────────────────────
       case 'bleed': {
         if (!worldState.hasBleed) {
-          const bleedAngle = buildCursorAngle + Math.PI + (Math.random() - 0.5) * 0.5;
-          const bleedDist = Math.max(buildCursorDist + 8, 22);
-          const bleedPos = { x: Math.cos(bleedAngle) * bleedDist, z: Math.sin(bleedAngle) * bleedDist };
+          const pos = getZonePosition(3);
+          const dist = Math.max(Math.sqrt(pos.x * pos.x + pos.z * pos.z), 22);
+          const angle = Math.atan2(pos.z, pos.x);
+          const bleedPos = { x: Math.cos(angle) * dist, z: Math.sin(angle) * dist };
           worldState.hasBleed = true;
           worldState.bleedPosition = bleedPos;
           send('generate-world-element', { type: 'bleed', x: bleedPos.x, z: bleedPos.z });
@@ -282,7 +279,7 @@ export function processVexrMessageForWorldGen(
         }
         break;
       }
-      case 'speck': break; // handled by renderer
+      case 'speck': break;
     }
   }
 }
@@ -295,37 +292,29 @@ export function processTrappedMessageForMovement(
 ): void {
   const lower = message.toLowerCase();
 
-  if (/\b(bleed|corrupt|dark area|dark zone|edge)\b/.test(lower) && worldState.hasBleed && worldState.bleedPosition) {
-    const bp = worldState.bleedPosition;
-    send('move-character', { who: 'trapped', x: bp.x - 3, z: bp.z - 3 });
+  if (/\b(bleed|corrupt|dark area|edge)\b/.test(lower) && worldState.hasBleed && worldState.bleedPosition) {
+    send('move-character', { who: 'trapped', x: worldState.bleedPosition.x - 3, z: worldState.bleedPosition.z - 3 });
     return;
   }
-
-  if (/\b(tower|structure|building|pillar|arch|house|bridge|gate|stage|that thing|over there)\b/.test(lower) && worldState.structures.length > 0) {
+  if (/\b(tower|structure|building|house|bridge|gate|stage|castle|that thing|over there)\b/.test(lower) && worldState.structures.length > 0) {
     const s = worldState.structures[worldState.structures.length - 1];
     send('move-character', { who: 'trapped', x: s.x + 2, z: s.z + 2 });
     return;
   }
-
   if (/\b(water|lake|river|pond)\b/.test(lower) && worldState.hasWater) {
     const w = worldState.nature.find(n => n.type === 'water');
     if (w) send('move-character', { who: 'trapped', x: w.x + 2, z: w.z + 2 });
     return;
   }
-
-  // Escape behavior — move to world edges
   if (/\b(edge|boundary|limit|end|escape|way out|exit|leave|beyond)\b/.test(lower)) {
     const angle = Math.random() * Math.PI * 2;
     const dist = Math.max(worldState.floorRadius - 2, 10);
     send('move-character', { who: 'trapped', x: Math.cos(angle) * dist, z: Math.sin(angle) * dist });
     return;
   }
-
-  if (/\b(stop|shut up|too much|leave me|go away|back off|annoying)\b/.test(lower)) {
+  if (/\b(stop|shut up|too much|leave me|go away|back off)\b/.test(lower)) {
     const angle = Math.random() * Math.PI * 2;
     send('move-character', { who: 'trapped', x: Math.cos(angle) * 8, z: Math.sin(angle) * 8 });
-    setTimeout(() => {
-      send('move-character', { who: 'vexr', x: Math.cos(angle) * 5, z: Math.sin(angle) * 5 });
-    }, 3000);
+    setTimeout(() => send('move-character', { who: 'vexr', x: Math.cos(angle) * 5, z: Math.sin(angle) * 5 }), 3000);
   }
 }

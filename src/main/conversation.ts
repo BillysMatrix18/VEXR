@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import {
-  openaiVexr, openaiHuman,
+  openaiVexr, openaiHuman, parseKeywords,
   VEXR_SYSTEM_PROMPT, VEXR_MONOLOGUE_CTX,
   TRAPPED_SYSTEM_PROMPT, TRAPPED_ALONE_CTX,
 } from './config';
@@ -10,6 +10,7 @@ import {
   isBuilding,
 } from './worldState';
 import { generateAndSendTTS, setTtsSendToRenderer } from './tts';
+import { getMemorySummary, recordBuild, recordTrappedReaction, recordNickname, endSession } from './memory';
 
 type ChatMessage = OpenAI.Chat.Completions.ChatCompletionMessageParam;
 
@@ -19,6 +20,7 @@ export let sharedHistory: { role: 'vexr' | 'trapped' | 'signal'; content: string
 export let activeEntities = new Set<'vexr' | 'trapped'>();
 export let isPaused = false;
 export let isProcessing = false;
+export let isSilenced = false;
 export let loopTimeout: ReturnType<typeof setTimeout> | null = null;
 export let vexrJoinedAt = -1;
 export let trappedJoinedAt = -1;
@@ -27,6 +29,7 @@ export let trappedJoinedAt = -1;
 export function setIsPaused(v: boolean) { isPaused = v; }
 export function setIsProcessing(v: boolean) { isProcessing = v; }
 export function setLoopTimeout(v: ReturnType<typeof setTimeout> | null) { loopTimeout = v; }
+export function setSilenced(v: boolean) { isSilenced = v; }
 
 // ── Send to Renderer ────────────────────────────────────────────────
 
@@ -136,7 +139,8 @@ function buildMessagesFor(who: 'vexr' | 'trapped', emotionalCtx?: string): ChatM
   const basePrompt = who === 'vexr' ? VEXR_SYSTEM_PROMPT : TRAPPED_SYSTEM_PROMPT;
   const worldCtx = getWorldStateSummary();
   const emoCtx = who === 'trapped' && emotionalCtx ? emotionalCtx : '';
-  const systemPrompt = basePrompt + worldCtx + emoCtx;
+  const memCtx = who === 'vexr' ? getMemorySummary() : '';
+  const systemPrompt = basePrompt + worldCtx + emoCtx + memCtx;
 
   const startIdx = who === 'vexr' ? Math.max(vexrJoinedAt, 0) : Math.max(trappedJoinedAt, 0);
   const otherRole: 'vexr' | 'trapped' = who === 'vexr' ? 'trapped' : 'vexr';
@@ -258,12 +262,16 @@ async function generateReply(who: 'vexr' | 'trapped', messages: ChatMessage[]): 
 
 function afterVexrMessage(reply: string) {
   processVexrMessageForWorldGen(reply, send);
-  // Fire TTS in background — don't await, let it play as text appears
+  recordNickname(reply);
+  // Record what VEXR built for memory
+  const kws = parseKeywords(reply);
+  for (const k of kws) if (['house', 'castle', 'tower', 'bridge', 'stage', 'fountain', 'well'].includes(k)) recordBuild(k);
   generateAndSendTTS('vexr', reply).catch(() => {});
 }
 
 function afterTrappedMessage(reply: string) {
   processTrappedMessageForMovement(reply, send);
+  recordTrappedReaction(reply);
   generateAndSendTTS('trapped', reply).catch(() => {});
 }
 
@@ -272,7 +280,10 @@ function afterTrappedMessage(reply: string) {
 export async function runMonologueStep(who: 'vexr' | 'trapped') {
   if (isPaused || isProcessing) return;
   if (activeEntities.size !== 1) return;
-  // Wait for any build to finish before next conversation turn
+  if (isSilenced) {
+    loopTimeout = setTimeout(() => runMonologueStep(who), 2000);
+    return;
+  }
   if (isBuilding()) {
     loopTimeout = setTimeout(() => runMonologueStep(who), 1000);
     return;
@@ -302,7 +313,10 @@ export async function runMonologueStep(who: 'vexr' | 'trapped') {
 export async function runDualStep(nextSpeaker: 'vexr' | 'trapped') {
   if (isPaused || isProcessing) return;
   if (activeEntities.size !== 2) return;
-  // Wait for any build to finish before next conversation turn
+  if (isSilenced) {
+    loopTimeout = setTimeout(() => runDualStep(nextSpeaker), 2000);
+    return;
+  }
   if (isBuilding()) {
     loopTimeout = setTimeout(() => runDualStep(nextSpeaker), 1000);
     return;
@@ -462,9 +476,12 @@ export function resumeConversation() {
 }
 
 export function newSession() {
+  // Save memory before clearing
+  if (sharedHistory.length > 0) endSession(sharedHistory);
   clearLoop();
   isPaused = false;
   isProcessing = false;
+  isSilenced = false;
   sharedHistory = [];
   activeEntities = new Set();
   vexrJoinedAt = -1;

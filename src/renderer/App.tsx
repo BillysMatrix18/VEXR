@@ -41,6 +41,8 @@ const App: React.FC = () => {
   const [thoughts, setThoughts] = useState<string[]>([]);
   const [emotions, setEmotions] = useState<Record<string, number>>({});
   const [isMuted, setIsMuted] = useState(false);
+  const [isSilenced, setIsSilenced] = useState(false);
+  const [cameraMode, setCameraMode] = useState<string>('free');
   const [refImage, setRefImage] = useState<{ base64: string; mimeType: string; preview: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -52,6 +54,17 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => { scrollToBottom(); }, [messages, typingWho, scrollToBottom]);
+
+  // Camera mode keyboard shortcuts
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) return;
+      const modes: Record<string, string> = { '1': 'free', '2': 'follow-vexr', '3': 'follow-trapped', '4': 'cinematic', '5': 'overview' };
+      if (modes[e.key]) setCameraMode(modes[e.key]);
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, []);
 
   // World event ticker
   useEffect(() => {
@@ -129,6 +142,16 @@ const App: React.FC = () => {
   const handlePause = () => { setIsPaused(true); window.vexrBridge.pauseConversation(); };
   const handleResume = () => { setIsPaused(false); window.vexrBridge.resumeConversation(); };
   const handleNewSession = () => { window.vexrBridge.newSession(); };
+  const handleSilenceToggle = () => {
+    const next = !isSilenced;
+    setIsSilenced(next);
+    window.vexrBridge.setSilenced(next);
+    if (next && currentAudioRef.current) {
+      currentAudioRef.current.pause();
+      currentAudioRef.current = null;
+    }
+  };
+
   const handleMuteToggle = () => {
     const next = !isMuted;
     setIsMuted(next);
@@ -222,6 +245,7 @@ const App: React.FC = () => {
             spawnedEntities={spawnedEntities}
             messages={messages}
             typingWho={typingWho}
+            cameraMode={cameraMode}
           />
 
           <div className="entity-panel">
@@ -240,6 +264,19 @@ const App: React.FC = () => {
             >
               {spawnedEntities.has('trapped') ? '○ TRAPPED' : '+ ADD TRAPPED'}
             </button>
+            <div className="camera-controls">
+              <div className="entity-panel-title">CAMERA</div>
+              {(['free', 'follow-vexr', 'follow-trapped', 'cinematic', 'overview'] as const).map((mode, i) => (
+                <button
+                  key={mode}
+                  className={`cam-btn ${cameraMode === mode ? 'cam-active' : ''}`}
+                  onClick={() => setCameraMode(mode)}
+                >
+                  {i + 1} {mode.replace('-', ' ').toUpperCase()}
+                </button>
+              ))}
+            </div>
+
             <div className="image-feed-section">
               <div className="entity-panel-title">REFERENCE</div>
               {refImage ? (
@@ -304,6 +341,12 @@ const App: React.FC = () => {
               >
                 {isMuted ? 'UNMUTE' : 'MUTE'}
               </button>
+              <button
+                className={`ctrl-btn silence-btn ${isSilenced ? 'silenced' : ''}`}
+                onClick={handleSilenceToggle}
+              >
+                {isSilenced ? 'UNSILENCE' : 'SILENCE'}
+              </button>
             </div>
             <div className="world-ticker">
               <span className="ticker-label">WORLD:</span>
@@ -338,6 +381,10 @@ const App: React.FC = () => {
                   </div>
                 </div>
               </div>
+            )}
+
+            {isSilenced && (
+              <div className="silenced-indicator">[SILENCED — No AI calls active]</div>
             )}
 
             <div ref={messagesEndRef} />
