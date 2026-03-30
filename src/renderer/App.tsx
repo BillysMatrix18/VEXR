@@ -46,8 +46,12 @@ const App: React.FC = () => {
   const [refImage, setRefImage] = useState<{ base64: string; mimeType: string; preview: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const [audioVolume, setAudioVolume] = useState(0);
   const isMutedRef = useRef(false);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const animFrameRef = useRef<number>(0);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -92,13 +96,41 @@ const App: React.FC = () => {
     cleanups.push(window.vexrBridge.onTtsAudio((data) => {
       if (isMutedRef.current) return;
       try {
-        // Stop any currently playing audio
         if (currentAudioRef.current) {
           currentAudioRef.current.pause();
           currentAudioRef.current = null;
         }
+        cancelAnimationFrame(animFrameRef.current);
+        setAudioVolume(0);
+
         const audio = new Audio(`data:${data.mimeType};base64,${data.audio}`);
         currentAudioRef.current = audio;
+
+        // Set up Web Audio analyser for lip sync
+        if (!audioContextRef.current) audioContextRef.current = new AudioContext();
+        const ctx = audioContextRef.current;
+        const source = ctx.createMediaElementSource(audio);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 256;
+        source.connect(analyser);
+        analyser.connect(ctx.destination);
+        analyserRef.current = analyser;
+
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+        const readVolume = () => {
+          if (!analyserRef.current) return;
+          analyserRef.current.getByteFrequencyData(dataArray);
+          let sum = 0;
+          for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+          const avg = sum / dataArray.length / 255; // 0-1
+          setAudioVolume(avg);
+          animFrameRef.current = requestAnimationFrame(readVolume);
+        };
+
+        audio.onplay = () => { if (ctx.state === 'suspended') ctx.resume(); readVolume(); };
+        audio.onended = () => { cancelAnimationFrame(animFrameRef.current); setAudioVolume(0); };
+        audio.onpause = () => { cancelAnimationFrame(animFrameRef.current); setAudioVolume(0); };
+
         audio.play().catch(() => {});
       } catch {}
     }));
@@ -246,6 +278,7 @@ const App: React.FC = () => {
             messages={messages}
             typingWho={typingWho}
             cameraMode={cameraMode}
+            audioVolume={audioVolume}
           />
 
           <div className="entity-panel">

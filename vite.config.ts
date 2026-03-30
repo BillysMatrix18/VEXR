@@ -13,6 +13,7 @@ export default defineConfig({
   server: {
     port: 5173,
   },
+  publicDir: '../../models',
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src/renderer'),

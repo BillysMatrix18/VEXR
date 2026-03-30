@@ -76,11 +76,20 @@ When a Sketchfab API key is configured, VEXR searches for real 3D models to plac
 
 Drop or select an image (JPG, PNG, WebP) in the reference panel. The image is sent to VEXR's next API call via GPT-4o vision. VEXR sees the image and uses it as creative inspiration for what he builds next. Used once then cleared.
 
+### VEXR 3D Model
+
+Place a `VEXR.glb` file in the `/models` folder to use a custom 3D model for VEXR. The app will:
+- Load the GLB via GLTFLoader, scaled to 0.015
+- Animate the jaw bone (`ORG-bottom_teeth_314`) driven by real-time TTS audio volume via Web Audio AnalyserNode
+- Animate eyes (`eye_l_310`, `eye_r_313`) with idle blink and look-around
+- Swing arms (`upper_arm_fk.L/R`) when walking, bob chest when speaking, sway spine when idle
+- Fall back to the primitive model if GLB is not found
+
 ### AI Voices (TTS)
 
-Both characters speak aloud via OpenAI `tts-1`:
-- **VEXR** — "onyx" voice (deep, theatrical)
-- **Trapped One** — "nova" voice (warm, human)
+Both characters speak aloud via OpenAI `tts-1-hd`:
+- **VEXR** — "onyx" voice, speed 1.15 (deep, theatrical, slightly fast)
+- **Trapped One** — "nova" voice, speed 0.95 (warm, human, slightly slow)
 
 The **MUTE** button skips TTS API calls entirely — zero cost when muted. Characters still talk in text.
 

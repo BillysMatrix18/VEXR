@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { createVexrCharacter, createTrappedCharacter, createSpeck, createSpawnBurst } from './entities';
+import { createVexrCharacter, loadVexrModel, createTrappedCharacter, createSpeck, createSpawnBurst, VEXR_BONES } from './entities';
 import {
   WorldState, createWorldState,
   generateFloor, generateSky, generateStructure, generateBleed, shiftLighting,
@@ -18,6 +18,7 @@ interface ConstructSceneProps {
   messages: Message[];
   typingWho: string | null;
   cameraMode: string;
+  audioVolume: number;
 }
 
 interface CharState {
@@ -47,6 +48,8 @@ interface SceneState {
   speaking: string | null;
   disposed: boolean;
   buildAnims: BuildAnim[];
+  vexrIsGLB: boolean;
+  audioVolume: number;  // 0-1, updated from App via ref
 }
 
 interface BubbleData {
@@ -146,7 +149,7 @@ const SKY_COLORS: Record<string, number> = {
   storm: 0x111118, aurora: 0x0a2020, void: 0x000000,
 };
 
-const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messages, typingWho, cameraMode }) => {
+const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messages, typingWho, cameraMode, audioVolume }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef<SceneState | null>(null);
   const prevEntitiesRef = useRef(new Set<string>());
@@ -167,6 +170,10 @@ const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messag
   useEffect(() => {
     if (stateRef.current) stateRef.current.speaking = typingWho;
   }, [typingWho]);
+
+  useEffect(() => {
+    if (stateRef.current) stateRef.current.audioVolume = audioVolume;
+  }, [audioVolume]);
 
   // Update bubble data when messages change
   useEffect(() => {
@@ -232,6 +239,8 @@ const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messag
       speaking: null,
       disposed: false,
       buildAnims: [],
+      vexrIsGLB: false,
+      audioVolume: 0,
     };
     stateRef.current = state;
 
@@ -323,28 +332,70 @@ const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messag
       // VEXR animations
       if (state.vexr) {
         const v = state.vexr;
-        const coatL = v.group.getObjectByName('coatL');
-        const coatR = v.group.getObjectByName('coatR');
-        if (coatL) coatL.rotation.z = 0.12 + Math.sin(time * 2) * 0.06;
-        if (coatR) coatR.rotation.z = -0.12 + Math.sin(time * 2 + 1) * 0.06;
 
-        // Head bob when speaking
-        const head = v.group.getObjectByName('head');
-        if (head) {
-          head.rotation.y = state.speaking === 'vexr'
-            ? Math.sin(time * 4) * 0.15
-            : Math.sin(time * 0.5) * 0.1;
-        }
+        if (state.vexrIsGLB) {
+          // ── GLB bone-driven animations ──────────────────────
+          const findBone = (name: string) => v.group.getObjectByName(name);
 
-        // Arms gesture when speaking
-        const armL = v.group.getObjectByName('armL');
-        const armR = v.group.getObjectByName('armR');
-        if (state.speaking === 'vexr') {
-          if (armL) armL.rotation.z = 0.3 + Math.sin(time * 3) * 0.25;
-          if (armR) armR.rotation.z = -0.3 + Math.sin(time * 3 + 1.5) * 0.25;
+          // Jaw — audio-driven lip sync
+          const jaw = findBone(VEXR_BONES.jaw);
+          const targetJaw = state.audioVolume * 0.35; // 0 to 0.35 radians
+          if (jaw) jaw.rotation.x += (targetJaw - jaw.rotation.x) * 0.3;
+
+          const bottomTeeth = findBone(VEXR_BONES.bottomTeeth);
+          if (bottomTeeth) bottomTeeth.rotation.x += (targetJaw - bottomTeeth.rotation.x) * 0.3;
+
+          const tongue = findBone(VEXR_BONES.tongue);
+          if (tongue) tongue.rotation.x += (targetJaw * 0.3 - tongue.rotation.x) * 0.2;
+
+          // Eyes — idle blink and look around
+          const eyeL = findBone(VEXR_BONES.eyeL);
+          const eyeR = findBone(VEXR_BONES.eyeR);
+          const blinkPhase = Math.sin(time * 0.3) > 0.95 ? 0.15 : 0; // occasional blink
+          const lookX = Math.sin(time * 0.4) * 0.08;
+          const lookY = Math.sin(time * 0.25 + 1) * 0.06;
+          if (eyeL) { eyeL.rotation.x = lookX + blinkPhase; eyeL.rotation.y = lookY; }
+          if (eyeR) { eyeR.rotation.x = lookX + blinkPhase; eyeR.rotation.y = lookY; }
+
+          // Arms — swing when walking
+          const armL = findBone(VEXR_BONES.upperArmL);
+          const armR = findBone(VEXR_BONES.upperArmR);
+          const isMoving = v.target.distanceTo(v.group.position) > 0.5;
+          const swingAmt = isMoving ? Math.sin(time * 4) * 0.3 : 0;
+          if (armL) armL.rotation.x += (swingAmt - armL.rotation.x) * 0.1;
+          if (armR) armR.rotation.x += (-swingAmt - armR.rotation.x) * 0.1;
+
+          // Chest — subtle bob when speaking
+          const chest = findBone(VEXR_BONES.chest);
+          if (chest && state.speaking === 'vexr') {
+            chest.rotation.x = Math.sin(time * 3) * 0.02;
+          }
+
+          // Spine — gentle idle sway
+          const spine = findBone(VEXR_BONES.spine);
+          if (spine) spine.rotation.z = Math.sin(time * 0.8) * 0.015;
+
         } else {
-          if (armL) armL.rotation.z += (0.3 - armL.rotation.z) * 0.05;
-          if (armR) armR.rotation.z += (-0.3 - armR.rotation.z) * 0.05;
+          // ── Primitive model animations (fallback) ───────────
+          const coatL = v.group.getObjectByName('coatL');
+          const coatR = v.group.getObjectByName('coatR');
+          if (coatL) coatL.rotation.z = 0.12 + Math.sin(time * 2) * 0.06;
+          if (coatR) coatR.rotation.z = -0.12 + Math.sin(time * 2 + 1) * 0.06;
+
+          const head = v.group.getObjectByName('head');
+          if (head) {
+            head.rotation.y = state.speaking === 'vexr' ? Math.sin(time * 4) * 0.15 : Math.sin(time * 0.5) * 0.1;
+          }
+
+          const armL = v.group.getObjectByName('armL');
+          const armR = v.group.getObjectByName('armR');
+          if (state.speaking === 'vexr') {
+            if (armL) armL.rotation.z = 0.3 + Math.sin(time * 3) * 0.25;
+            if (armR) armR.rotation.z = -0.3 + Math.sin(time * 3 + 1.5) * 0.25;
+          } else {
+            if (armL) armL.rotation.z += (0.3 - armL.rotation.z) * 0.05;
+            if (armR) armR.rotation.z += (-0.3 - armR.rotation.z) * 0.05;
+          }
         }
 
         updateMovement(v, delta, time, state.trapped?.group ?? null, state.speaking === 'vexr', true, anySpeaking);
@@ -653,20 +704,29 @@ const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messag
       if (prev.has(entity)) continue;
 
       if (entity === 'vexr' && !state.vexr) {
-        const group = createVexrCharacter();
-        group.position.set(0, 0.3, 0);
-        state.scene.add(group);
-        state.vexr = { group, target: new THREE.Vector3(0, 0, 0), wanderTimer: 3 };
+        const spawnVexr = (group: THREE.Group, isGLB: boolean) => {
+          group.position.set(0, 0.3, 0);
+          state.scene.add(group);
+          state.vexr = { group, target: new THREE.Vector3(0, 0, 0), wanderTimer: 3 };
+          state.vexrIsGLB = isGLB;
 
-        const speck = createSpeck();
-        speck.position.set(1.3, 2.3, 0);
-        state.scene.add(speck);
-        state.speck = speck;
+          const speck = createSpeck();
+          speck.position.set(1.3, 2.3, 0);
+          state.scene.add(speck);
+          state.speck = speck;
 
-        const burst = createSpawnBurst(0x00ffe1);
-        burst.position.set(0, 0, 0);
-        state.scene.add(burst);
-        state.bursts.push({ group: burst, startTime: state.clock.getElapsedTime() });
+          const burst = createSpawnBurst(0x00ffe1);
+          burst.position.set(0, 0, 0);
+          state.scene.add(burst);
+          state.bursts.push({ group: burst, startTime: state.clock.getElapsedTime() });
+        };
+
+        // Try loading GLB model, fall back to primitives
+        loadVexrModel(
+          (glbGroup) => spawnVexr(glbGroup, true),
+          () => spawnVexr(createVexrCharacter(), false),
+        );
+
       }
 
       if (entity === 'trapped' && !state.trapped) {
