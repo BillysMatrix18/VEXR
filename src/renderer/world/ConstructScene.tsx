@@ -26,6 +26,13 @@ interface CharState {
   wanderTimer: number;
 }
 
+interface BuildAnim {
+  group: THREE.Group;
+  children: THREE.Object3D[];
+  startTime: number;
+  delay: number; // ms between each piece
+}
+
 interface SceneState {
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
@@ -39,6 +46,7 @@ interface SceneState {
   bursts: { group: THREE.Group; startTime: number }[];
   speaking: string | null;
   disposed: boolean;
+  buildAnims: BuildAnim[];
 }
 
 interface BubbleData {
@@ -115,6 +123,24 @@ function updateMovement(
 
 // ── Component ───────────────────────────────────────────────────────
 
+function startBuildAnimation(state: SceneState, group: THREE.Group) {
+  const children = group.children.slice();
+  if (children.length === 0) return;
+  // Start all pieces at scale 0
+  for (const c of children) c.scale.setScalar(0.001);
+  state.buildAnims.push({
+    group,
+    children,
+    startTime: state.clock.getElapsedTime(),
+    delay: 350, // ms between each piece
+  });
+  // Spawn particles at build site
+  const burst = createSpawnBurst(0x00ffe1);
+  burst.position.copy(group.position);
+  state.scene.add(burst);
+  state.bursts.push({ group: burst, startTime: state.clock.getElapsedTime() });
+}
+
 const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messages, typingWho }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef<SceneState | null>(null);
@@ -188,6 +214,7 @@ const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messag
       bursts: [],
       speaking: null,
       disposed: false,
+      buildAnims: [],
     };
     stateRef.current = state;
 
@@ -198,19 +225,45 @@ const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messag
       switch (data.type) {
         case 'floor': generateFloor(s.scene, s.worldState, data.radius); break;
         case 'sky': generateSky(s.scene, s.worldState); break;
-        case 'structure': generateStructure(s.scene, s.worldState, data.x, data.z, data.structureType); break;
-        case 'terrain': generateTerrain(s.scene, s.worldState, data.x, data.z, data.terrainType); break;
+        case 'structure': {
+          generateStructure(s.scene, s.worldState, data.x, data.z, data.structureType);
+          if (data.animate) {
+            const lastEl = s.worldState.elements[s.worldState.elements.length - 1];
+            if (lastEl) startBuildAnimation(s, lastEl as THREE.Group);
+          }
+          break;
+        }
+        case 'terrain': {
+          generateTerrain(s.scene, s.worldState, data.x, data.z, data.terrainType);
+          if (data.animate) {
+            const lastEl = s.worldState.elements[s.worldState.elements.length - 1];
+            if (lastEl) startBuildAnimation(s, lastEl as THREE.Group);
+          }
+          break;
+        }
         case 'nature': generateNature(s.scene, s.worldState, data.x, data.z, data.natureType); break;
         case 'bleed': generateBleed(s.scene, s.worldState, data.x, data.z); break;
         case 'light': shiftLighting(s.scene, s.worldState); break;
         case 'model': {
-          // Load GLTF/GLB model from file path
           const loader = new GLTFLoader();
           try {
             loader.load(`file://${data.modelPath}`, (gltf) => {
               const model = gltf.scene;
+              // Count triangles
+              let triCount = 0;
+              model.traverse((child) => {
+                if ((child as THREE.Mesh).isMesh) {
+                  const geo = (child as THREE.Mesh).geometry;
+                  triCount += geo.index ? geo.index.count / 3 : geo.attributes.position.count / 3;
+                }
+              });
+              // Skip if exceeds 5000 triangles
+              if (triCount > 5000) {
+                console.log(`[VEXR] Model too heavy (${triCount} tris), using primitive`);
+                generateStructure(s.scene, s.worldState, data.x, data.z, data.name || 'structure');
+                return;
+              }
               model.position.set(data.x, 0, data.z);
-              // Scale to fit world
               const box = new THREE.Box3().setFromObject(model);
               const size = box.getSize(new THREE.Vector3());
               const maxDim = Math.max(size.x, size.y, size.z);
@@ -220,7 +273,6 @@ const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messag
               s.worldState.elements.push(model);
               s.worldState.structureCount++;
             }, undefined, () => {
-              // Fallback to primitive
               generateStructure(s.scene, s.worldState, data.x, data.z, data.name || 'structure');
             });
           } catch {
@@ -373,6 +425,29 @@ const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messag
         });
       }
 
+      // Build construction animations — scale in pieces one by one
+      for (let i = state.buildAnims.length - 1; i >= 0; i--) {
+        const ba = state.buildAnims[i] as BuildAnim;
+        const elapsed = (time - ba.startTime) * 1000; // ms
+        let allDone = true;
+        for (let j = 0; j < ba.children.length; j++) {
+          const pieceStart = j * ba.delay;
+          const pieceAge = elapsed - pieceStart;
+          if (pieceAge < 0) {
+            ba.children[j].scale.setScalar(0.001);
+            allDone = false;
+          } else if (pieceAge < 400) {
+            const t = pieceAge / 400;
+            const ease = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) * (-2 * t + 2) / 2;
+            ba.children[j].scale.setScalar(ease);
+            allDone = false;
+          } else {
+            ba.children[j].scale.setScalar(1);
+          }
+        }
+        if (allDone) state.buildAnims.splice(i, 1);
+      }
+
       // Slow sky rotation
       const sky = scene.getObjectByName('sky');
       if (sky) sky.rotation.y += delta * 0.008;
@@ -507,14 +582,25 @@ const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messag
     if (!state) return;
     const prev = prevEntitiesRef.current;
 
-    // Session reset — remove everything
+    // Session reset — remove everything and dispose geometry/textures
     if (spawnedEntities.size === 0 && prev.size > 0) {
       if (state.vexr) { state.scene.remove(state.vexr.group); state.vexr = null; }
       if (state.trapped) { state.scene.remove(state.trapped.group); state.trapped = null; }
       if (state.speck) { state.scene.remove(state.speck); state.speck = null; }
       for (const b of state.bursts) state.scene.remove(b.group);
       state.bursts = [];
-      for (const el of state.worldState.elements) state.scene.remove(el);
+      for (const el of state.worldState.elements) {
+        state.scene.remove(el);
+        // Dispose geometry and materials to free memory
+        el.traverse((child) => {
+          if ((child as THREE.Mesh).isMesh) {
+            const mesh = child as THREE.Mesh;
+            mesh.geometry?.dispose();
+            if (Array.isArray(mesh.material)) mesh.material.forEach(m => m.dispose());
+            else mesh.material?.dispose();
+          }
+        });
+      }
       state.worldState = createWorldState();
       state.camera.position.set(0, 5, 14);
       state.controls.target.set(0, 1, 0);

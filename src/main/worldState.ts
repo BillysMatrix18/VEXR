@@ -26,6 +26,8 @@ export interface WorldStateData {
 let worldState: WorldStateData = createFreshWorldState();
 let buildCursorAngle = 0;
 let buildCursorDist = 3;
+let isBuildingInProgress = false;
+let buildQueue: Array<{ kw: string; send: (ch: string, d?: any) => void }> = [];
 
 export function createFreshWorldState(): WorldStateData {
   return {
@@ -50,6 +52,8 @@ export function resetWorldState(): void {
   worldState = createFreshWorldState();
   buildCursorAngle = 0;
   buildCursorDist = 3;
+  isBuildingInProgress = false;
+  buildQueue = [];
 }
 
 // ── Build Cursor ────────────────────────────────────────────────────
@@ -94,6 +98,62 @@ export function getWorldStateSummary(): string {
   return '\n\nCURRENT WORLD STATE: ' + parts.join('. ') + '.';
 }
 
+// ── Build Queue (one at a time) ─────────────────────────────────────
+
+function processBuildQueue() {
+  if (isBuildingInProgress || buildQueue.length === 0) return;
+  const next = buildQueue.shift()!;
+  executeBuild(next.kw, next.send);
+}
+
+export function onBuildComplete() {
+  isBuildingInProgress = false;
+  processBuildQueue();
+}
+
+function queueBuild(kw: string, send: (ch: string, d?: any) => void) {
+  buildQueue.push({ kw, send });
+  processBuildQueue();
+}
+
+function executeBuild(kw: string, send: (ch: string, d?: any) => void) {
+  isBuildingInProgress = true;
+  const pos = advanceBuildCursor();
+  autoExpandFloor(pos.x, pos.z, send);
+
+  // Move VEXR to build site first
+  send('move-character', { who: 'vexr', x: pos.x, z: pos.z });
+
+  // Small delay so VEXR arrives before construction starts
+  setTimeout(() => {
+    if (isStructureType(kw)) {
+      worldState.structures.push({ type: kw, x: pos.x, z: pos.z, description: kw });
+      searchAndDownloadModel(`${kw} low poly fantasy`, send).then((modelPath) => {
+        if (modelPath) {
+          send('generate-world-element', { type: 'model', modelPath, x: pos.x, z: pos.z, name: kw, animate: true });
+        } else {
+          send('generate-world-element', { type: 'structure', structureType: kw, x: pos.x, z: pos.z, animate: true });
+        }
+      }).catch(() => {
+        send('generate-world-element', { type: 'structure', structureType: kw, x: pos.x, z: pos.z, animate: true });
+      });
+    } else if (isTerrainType(kw)) {
+      worldState.terrain.push({ type: kw, x: pos.x, z: pos.z, description: `${kw} terrain` });
+      send('generate-world-element', { type: 'terrain', terrainType: kw, x: pos.x, z: pos.z, animate: true });
+    }
+    // Mark build complete after animation time (4 seconds)
+    setTimeout(() => onBuildComplete(), 4000);
+  }, 800);
+}
+
+function isStructureType(kw: string): boolean {
+  return ['house', 'tower', 'bridge', 'wall', 'gate', 'arch', 'stage', 'structure', 'well', 'fountain', 'stairs', 'ruins', 'path', 'lamp'].includes(kw);
+}
+
+function isTerrainType(kw: string): boolean {
+  return ['mountain', 'hill', 'cliff', 'valley', 'plain'].includes(kw);
+}
+
 // ── Auto-expand floor ───────────────────────────────────────────────
 
 function autoExpandFloor(x: number, z: number, send: (ch: string, d?: any) => void) {
@@ -133,37 +193,20 @@ export function processVexrMessageForWorldGen(
         break;
       }
 
-      // ── Terrain ─────────────────────────────────────────────
+      // ── Terrain (queued, one at a time) ─────────────────────
       case 'mountain': case 'hill': case 'cliff': case 'valley': case 'plain': {
         if (worldState.terrain.length < 6) {
-          const pos = advanceBuildCursor();
-          worldState.terrain.push({ type: kw, x: pos.x, z: pos.z, description: `${kw} terrain` });
-          send('move-character', { who: 'vexr', x: pos.x, z: pos.z });
-          send('generate-world-element', { type: 'terrain', terrainType: kw, x: pos.x, z: pos.z });
-          autoExpandFloor(pos.x, pos.z, send);
+          queueBuild(kw, send);
         }
         break;
       }
 
-      // ── Structures ──────────────────────────────────────────
+      // ── Structures (queued, one at a time) ──────────────────
       case 'house': case 'tower': case 'bridge': case 'wall': case 'gate':
       case 'arch': case 'stage': case 'structure': case 'well': case 'fountain':
       case 'stairs': case 'ruins': case 'path': case 'lamp': {
         if (worldState.structures.length < 20) {
-          const pos = advanceBuildCursor();
-          worldState.structures.push({ type: kw, x: pos.x, z: pos.z, description: `${kw}` });
-          send('move-character', { who: 'vexr', x: pos.x, z: pos.z });
-          autoExpandFloor(pos.x, pos.z, send);
-          // Try Sketchfab model first, fall back to primitives
-          searchAndDownloadModel(`${kw} low poly fantasy`, send).then((modelPath) => {
-            if (modelPath) {
-              send('generate-world-element', { type: 'model', modelPath, x: pos.x, z: pos.z, name: kw });
-            } else {
-              send('generate-world-element', { type: 'structure', structureType: kw, x: pos.x, z: pos.z });
-            }
-          }).catch(() => {
-            send('generate-world-element', { type: 'structure', structureType: kw, x: pos.x, z: pos.z });
-          });
+          queueBuild(kw, send);
         }
         break;
       }
