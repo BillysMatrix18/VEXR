@@ -145,11 +145,11 @@ body,
   overflow: hidden;
 }
 
-/* === VIEWPORT SECTION === */
+/* === VIEWPORT SECTION (3-column) === */
 .viewport-section {
   display: flex;
-  flex: 0 0 55%;
-  min-height: 200px;
+  flex: 0 0 58%;
+  min-height: 220px;
   border-bottom: 1px solid var(--border);
   position: relative;
 }
@@ -166,10 +166,58 @@ body,
   height: 100% !important;
 }
 
+/* === SPEECH BUBBLES (3D viewport overlays) === */
+.speech-bubble {
+  position: absolute;
+  max-width: 220px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 10px;
+  line-height: 1.4;
+  pointer-events: none;
+  transform: translate(-50%, -100%);
+  transition: opacity 0.4s ease;
+  z-index: 5;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+}
+.speech-bubble.vexr-bubble {
+  background: rgba(8, 8, 14, 0.92);
+  color: var(--cyan);
+  border: 1px solid rgba(0, 255, 225, 0.3);
+  box-shadow: 0 0 8px rgba(0, 255, 225, 0.1);
+}
+.speech-bubble.trapped-bubble {
+  background: rgba(8, 8, 14, 0.92);
+  color: var(--warm-white);
+  border: 1px solid rgba(240, 230, 211, 0.25);
+  box-shadow: 0 0 6px rgba(240, 230, 211, 0.08);
+}
+
+/* Thinking dots above character heads */
+.think-dots {
+  position: absolute;
+  pointer-events: none;
+  transform: translate(-50%, -100%);
+  z-index: 5;
+  font-size: 18px;
+  font-weight: bold;
+  letter-spacing: 2px;
+}
+.think-dots.vexr-think { color: var(--cyan); }
+.think-dots.trapped-think { color: var(--warm-white); }
+.think-dots span {
+  animation: dotPulse 1.4s infinite;
+  opacity: 0;
+}
+.think-dots span:nth-child(1) { animation-delay: 0s; }
+.think-dots span:nth-child(2) { animation-delay: 0.2s; }
+.think-dots span:nth-child(3) { animation-delay: 0.4s; }
+
 /* === ENTITY PANEL === */
 .entity-panel {
-  width: 130px;
-  padding: 10px;
+  width: 110px;
+  padding: 10px 8px;
   border-left: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -233,13 +281,99 @@ body,
   opacity: 0.6;
 }
 
+/* === NEURAL PANEL === */
+.neural-panel-container {
+  width: 220px;
+  border-left: 1px solid var(--border);
+  background: rgba(6, 6, 10, 0.97);
+  flex-shrink: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.neural-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.neural-panel-header {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.neural-panel-title {
+  font-size: 8px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--cyan);
+  text-shadow: 0 0 6px rgba(0, 255, 225, 0.2);
+}
+.neural-panel-subtitle {
+  font-size: 7px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+.neural-canvas-wrap {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+.neural-canvas-wrap canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+.neural-inactive {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-size: 8px;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  opacity: 0.4;
+}
+.thought-stream {
+  border-top: 1px solid var(--border);
+  padding: 6px 8px;
+  max-height: 120px;
+  overflow-y: auto;
+  flex-shrink: 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.thought-stream::-webkit-scrollbar { width: 3px; }
+.thought-stream::-webkit-scrollbar-track { background: transparent; }
+.thought-stream::-webkit-scrollbar-thumb { background: var(--border); }
+.thought-stream-title {
+  font-size: 7px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+.thought-fragment {
+  font-size: 9px;
+  color: var(--warm-white);
+  opacity: 0.7;
+  padding: 2px 0;
+  line-height: 1.3;
+  font-style: italic;
+}
+.thought-fragment:last-child {
+  opacity: 1;
+}
+
 /* === CHAT SECTION === */
 .chat-section {
   flex: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  min-height: 150px;
+  min-height: 140px;
 }
 
 /* === CONTROL BAR === */

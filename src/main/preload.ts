@@ -22,7 +22,7 @@ contextBridge.exposeInMainWorld('vexrBridge', {
     return () => { ipcRenderer.removeListener('typing-start', handler); };
   },
   onTypingStop: (cb: () => void) => {
-    const handler = (_e: any, data: any) => cb(data);
+    const handler = () => cb();
     ipcRenderer.on('typing-stop', handler);
     return () => { ipcRenderer.removeListener('typing-stop', handler); };
   },
@@ -32,7 +32,7 @@ contextBridge.exposeInMainWorld('vexrBridge', {
     return () => { ipcRenderer.removeListener('entity-spawned', handler); };
   },
   onSessionCleared: (cb: () => void) => {
-    const handler = (_e: any, data: any) => cb(data);
+    const handler = () => cb();
     ipcRenderer.on('session-cleared', handler);
     return () => { ipcRenderer.removeListener('session-cleared', handler); };
   },
