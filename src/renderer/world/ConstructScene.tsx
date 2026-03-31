@@ -145,8 +145,9 @@ function startBuildAnimation(state: SceneState, group: THREE.Group) {
 }
 
 const SKY_COLORS: Record<string, number> = {
-  sunrise: 0x442211, sunset: 0x331122, night: 0x040a14, day: 0x1a3050,
-  storm: 0x111118, aurora: 0x0a2020, void: 0x000000,
+  sunrise: 0xcc6633, sunset: 0xff6b35, night: 0x0a0a1a, day: 0x87ceeb,
+  storm: 0x2d2d2d, aurora: 0x0a3030, void: 0x000000,
+  red: 0x8b0000, blue: 0x87ceeb, bright: 0xd4eeff,
 };
 
 const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messages, typingWho, cameraMode, audioVolume }) => {
@@ -315,7 +316,9 @@ const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messag
         case 'bleed': generateBleed(s.scene, s.worldState, data.x, data.z); break;
         case 'light': shiftLighting(s.scene, s.worldState); break;
         case 'sky-change': {
-          const targetColor = new THREE.Color(SKY_COLORS[data.preset] ?? 0x0a0a18);
+          const hexColor = SKY_COLORS[data.preset] ?? 0x0a0a18;
+          console.log(`[VEXR Sky] Changing sky to preset "${data.preset}" → #${hexColor.toString(16).padStart(6, '0')}`);
+          const targetColor = new THREE.Color(hexColor);
           // Store target for smooth lerp in animation loop
           s.scene.userData.skyTarget = targetColor;
           // Also update sky dome if exists
@@ -762,16 +765,8 @@ const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messag
         camera.position.lerp(new THREE.Vector3(0, 30, 0.1), 0.03);
         controls.target.lerp(new THREE.Vector3(0, 0, 0), 0.03);
       } else {
-        // free mode — default orbit behavior
-        if (state.vexr && state.trapped) {
-          const mid = new THREE.Vector3().addVectors(state.vexr.group.position, state.trapped.group.position).multiplyScalar(0.5);
-          mid.y = 1;
-          controls.target.lerp(mid, 0.02);
-        } else if (state.vexr) {
-          controls.target.lerp(new THREE.Vector3(state.vexr.group.position.x, 1, state.vexr.group.position.z), 0.02);
-        } else if (state.trapped) {
-          controls.target.lerp(new THREE.Vector3(state.trapped.group.position.x, 1, state.trapped.group.position.z), 0.02);
-        }
+        // FREE mode — do nothing. Camera stays where user left it.
+        // OrbitControls handles all movement via mouse input only.
       }
 
       controls.update();

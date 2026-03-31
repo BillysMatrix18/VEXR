@@ -208,12 +208,13 @@ function buildMessagesFor(who: 'vexr' | 'trapped', emotionalCtx?: string, snapsh
     const img = pendingImage;
     pendingImage = null;
     hasReferenceImage = false;
-    console.log('[VEXR] Injecting reference image into VEXR API call');
+    const dataUrl = `data:${img.mimeType};base64,${img.base64}`;
+    console.log(`[VEXR] Injecting reference image into VEXR API call (base64 length: ${img.base64.length}, mime: ${img.mimeType})`);
     msgs.push({
       role: 'user',
       content: [
-        { type: 'text', text: '[A reference image has been transmitted from outside the Construct. Use it as creative inspiration for what you build next.]' },
-        { type: 'image_url', image_url: { url: `data:${img.mimeType};base64,${img.base64}` } },
+        { type: 'image_url', image_url: { url: dataUrl } },
+        { type: 'text', text: 'Look at this image carefully. Describe exactly what you see — the colors, the mood, the specific elements. Then build something in the Construct that matches what you see. Be specific about what is in the image.' },
       ] as any,
     });
   }

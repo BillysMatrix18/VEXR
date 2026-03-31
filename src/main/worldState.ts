@@ -84,14 +84,16 @@ export function parseUserSignalCommands(
 
   // Direct sky commands from user
   const skyPreset = parseSkyPreset(l);
-  if (skyPreset || /\b(sky|change.*sky|make.*sky)\b/.test(l)) {
+  if (skyPreset || /\b(sky|change.*sky|make.*sky|make it \w+)\b/.test(l)) {
     const preset = skyPreset ?? 'night';
-    worldState.hasSky = true;
-    worldState.skyPreset = preset;
-    send('generate-world-element', { type: 'sky-change', preset });
+    console.log(`[VEXR Sky] User command detected → preset: "${preset}"`);
+    // Create sky dome if it doesn't exist yet
     if (!worldState.hasSky) {
       send('generate-world-element', { type: 'sky' });
     }
+    worldState.hasSky = true;
+    worldState.skyPreset = preset;
+    send('generate-world-element', { type: 'sky-change', preset });
   }
 
   // Direct weather commands
