@@ -16,37 +16,35 @@ export const VEXR_BONES = {
   cane: 'cane_207',
 };
 
-// ── Load VEXR GLB Model ─────────────────────────────────────────────
+// ── Load VEXR GLB Model (via IPC data URL from main process) ────────
 
-export function loadVexrModel(
+export async function loadVexrModel(
   onSuccess: (group: THREE.Group) => void,
   onFallback: () => void,
-): void {
-  const loader = new GLTFLoader();
+): Promise<void> {
+  try {
+    console.log('[VEXR] Requesting GLB from main process via IPC...');
+    const dataUrl = await window.vexrBridge.getVexrModel();
 
-  // publicDir in vite serves models/ → /VEXR.glb from root
-  // In built app → models/VEXR.glb relative to index.html
-  const paths = ['/VEXR.glb', './VEXR.glb', 'VEXR.glb', '../models/VEXR.glb', '../../models/VEXR.glb'];
-
-  let attempted = 0;
-  function tryNext() {
-    if (attempted >= paths.length) {
-      console.warn('[VEXR] GLB not found at any path, using primitive model. Tried:', paths);
+    if (!dataUrl) {
+      console.warn('[VEXR] Main process returned null — GLB not found on disk');
       onFallback();
       return;
     }
-    const p = paths[attempted++];
-    console.log(`[VEXR] Trying to load GLB from: "${p}" (attempt ${attempted}/${paths.length})`);
+
+    console.log('[VEXR] Got GLB data URL from main process, loading with GLTFLoader...');
+    const loader = new GLTFLoader();
+
     loader.load(
-      p,
+      dataUrl,
       (gltf) => {
         const model = gltf.scene;
         model.name = 'vexrGLB';
         model.scale.setScalar(0.015);
 
         // Log all bone/node names for debugging
-        console.log('[VEXR] GLB loaded successfully from:', p);
-        console.log('[VEXR] Model nodes:');
+        console.log('[VEXR] GLB loaded successfully!');
+        console.log('[VEXR] Model nodes found:');
         model.traverse((child) => {
           if (child.name) console.log(`  - ${child.type}: "${child.name}"`);
         });
@@ -78,12 +76,14 @@ export function loadVexrModel(
       },
       undefined,
       (err) => {
-        console.log(`[VEXR] Failed to load from "${p}":`, err);
-        tryNext();
+        console.error('[VEXR] GLTFLoader failed to parse data URL:', err);
+        onFallback();
       },
     );
+  } catch (err) {
+    console.error('[VEXR] IPC error loading model:', err);
+    onFallback();
   }
-  tryNext();
 }
 
 // ── VEXR Primitive Fallback ─────────────────────────────────────────

@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld('vexrBridge', {
   pauseConversation: () => ipcRenderer.send('pause-conversation'),
   resumeConversation: () => ipcRenderer.send('resume-conversation'),
   newSession: () => ipcRenderer.send('new-session'),
+  resetVexr: () => ipcRenderer.send('reset-vexr'),
+  getVexrModel: (): Promise<string | null> => ipcRenderer.invoke('get-vexr-model'),
 
   windowMinimize: () => ipcRenderer.send('window-minimize'),
   windowMaximize: () => ipcRenderer.send('window-maximize'),

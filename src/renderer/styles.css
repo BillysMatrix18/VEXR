@@ -515,6 +515,11 @@ body,
   color: var(--magenta);
   background: rgba(255, 60, 172, 0.08);
 }
+.reset-vexr-btn:hover:not(:disabled) {
+  border-color: var(--cyan);
+  color: var(--cyan);
+  background: rgba(0, 255, 225, 0.05);
+}
 .silence-btn {
   font-size: 9px;
   min-width: 70px;

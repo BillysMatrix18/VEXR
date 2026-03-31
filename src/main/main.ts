@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import * as path from 'path';
+import * as fs from 'fs';
 import {
   setSendToRenderer,
   spawnEntity,
@@ -10,6 +11,7 @@ import {
   setPendingImage,
   setSilenced,
   setPendingSnapshot,
+  resetVexr,
 } from './conversation';
 import { resetWorldState } from './worldState';
 import { setTtsMuted } from './tts';
@@ -72,6 +74,29 @@ app.whenReady().then(() => {
   ipcMain.on('reference-image', (_event, data: { base64: string; mimeType: string }) => {
     setPendingImage(data.base64, data.mimeType);
   });
+  // VEXR GLB model — read from disk and send as base64 data URL
+  ipcMain.handle('get-vexr-model', () => {
+    const tryPaths = [
+      path.join(app.getAppPath(), 'models', 'VEXR.glb'),
+      path.join(__dirname, '../../models/VEXR.glb'),
+      path.join(process.cwd(), 'models', 'VEXR.glb'),
+    ];
+    for (const p of tryPaths) {
+      try {
+        if (fs.existsSync(p)) {
+          console.log('[VEXR] Found GLB at:', p);
+          const data = fs.readFileSync(p);
+          return 'data:model/gltf-binary;base64,' + data.toString('base64');
+        }
+      } catch (e: any) {
+        console.log('[VEXR] Failed to read GLB from', p, e.message);
+      }
+    }
+    console.warn('[VEXR] GLB not found at any path:', tryPaths);
+    return null;
+  });
+  // Reset VEXR only (keeps world + trapped)
+  ipcMain.on('reset-vexr', () => resetVexr());
   // Scene snapshot relay
   ipcMain.on('scene-snapshot', (_event, base64: string) => {
     setPendingSnapshot(base64);

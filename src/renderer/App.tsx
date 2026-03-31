@@ -368,6 +368,7 @@ const App: React.FC = () => {
                 </button>
               )}
               <button className="ctrl-btn new-btn" onClick={handleNewSession}>⟳ NEW SESSION</button>
+              <button className="ctrl-btn reset-vexr-btn" onClick={() => window.vexrBridge.resetVexr()}>↻ RESET VEXR</button>
               <button
                 className={`ctrl-btn mute-btn ${isMuted ? 'muted' : ''}`}
                 onClick={handleMuteToggle}

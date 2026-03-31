@@ -7,6 +7,8 @@ interface VexrBridge {
   pauseConversation: () => void;
   resumeConversation: () => void;
   newSession: () => void;
+  resetVexr: () => void;
+  getVexrModel: () => Promise<string | null>;
 
   windowMinimize: () => void;
   windowMaximize: () => void;

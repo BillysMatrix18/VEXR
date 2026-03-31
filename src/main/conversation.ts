@@ -74,14 +74,19 @@ export function clearLoop() {
 // ── Emotional State for Trapped One ─────────────────────────────────
 
 let lastEmotions: Record<string, number> = {};
+let lastVexrSpokeAt = 0;
+const VEXR_COOLDOWN_MS = 8000;
 
 // ── Reference Image for VEXR ────────────────────────────────────────
 
 let pendingImage: { base64: string; mimeType: string } | null = null;
 let pendingSnapshot: string | null = null;
+let hasReferenceImage = false;
 
 export function setPendingImage(base64: string, mimeType: string) {
   pendingImage = { base64, mimeType };
+  hasReferenceImage = true;
+  console.log('[VEXR] Reference image loaded, will be included in next VEXR API call');
 }
 
 export function setPendingSnapshot(base64: string) {
@@ -199,9 +204,11 @@ function buildMessagesFor(who: 'vexr' | 'trapped', emotionalCtx?: string, snapsh
   }
 
   // Inject reference image for VEXR if available (GPT-4o vision)
-  if (who === 'vexr' && pendingImage) {
+  if (who === 'vexr' && pendingImage && hasReferenceImage) {
     const img = pendingImage;
     pendingImage = null;
+    hasReferenceImage = false;
+    console.log('[VEXR] Injecting reference image into VEXR API call');
     msgs.push({
       role: 'user',
       content: [
@@ -275,7 +282,7 @@ async function generateReply(who: 'vexr' | 'trapped', messages: ChatMessage[]): 
       model: 'gpt-4o',
       messages,
       temperature: 0.92,
-      max_tokens: who === 'vexr' ? 200 : 400,
+      max_tokens: who === 'vexr' ? 60 : 400,
     });
     return response.choices[0]?.message?.content ?? '[...]';
   } catch (error: any) {
@@ -288,6 +295,7 @@ async function generateReply(who: 'vexr' | 'trapped', messages: ChatMessage[]): 
 // ── Post-Message Processing ─────────────────────────────────────────
 
 function afterVexrMessage(reply: string) {
+  lastVexrSpokeAt = Date.now();
   processVexrMessageForWorldGen(reply, send);
   recordNickname(reply);
   // Record what VEXR built for memory
@@ -358,6 +366,13 @@ export async function runDualStep(nextSpeaker: 'vexr' | 'trapped') {
     send('thought-fragments', thoughts);
     send('emotional-state', emotions);
     emotionalCtx = getEmotionalContext(emotions);
+  }
+
+  // VEXR cooldown — can't speak again within 8s of last message
+  if (nextSpeaker === 'vexr' && Date.now() - lastVexrSpokeAt < VEXR_COOLDOWN_MS) {
+    isProcessing = false;
+    loopTimeout = setTimeout(() => runDualStep('vexr'), VEXR_COOLDOWN_MS - (Date.now() - lastVexrSpokeAt));
+    return;
   }
 
   send('typing-start', nextSpeaker);
@@ -432,6 +447,14 @@ export async function handleUserInterrupt(message: string) {
   // Execute direct commands BEFORE AI responds (instant world changes)
   parseUserSignalCommands(message, send);
 
+  // If user asks to build/make/create anything, force VEXR out of any wait state
+  if (/\b(build|make|create|construct|place|add|generate)\b/i.test(message)) {
+    // Clear any pending wait instruction from VEXR's history
+    pendingImage = null;
+    hasReferenceImage = false;
+    console.log('[VEXR] User build command detected — overriding any wait state');
+  }
+
   sharedHistory.push({ role: 'signal', content: message });
   send('new-message', { role: 'signal', content: message });
 
@@ -503,6 +526,26 @@ export function resumeConversation() {
   } else if (activeEntities.size === 1) {
     const who = activeEntities.has('vexr') ? 'vexr' : 'trapped';
     loopTimeout = setTimeout(() => runMonologueStep(who), randomDelay());
+  }
+}
+
+export function resetVexr() {
+  // Clear VEXR's conversation history only — keep Trapped One and world
+  clearLoop();
+  // Remove all VEXR messages from history, keep trapped + signal
+  sharedHistory = sharedHistory.filter(m => m.role !== 'vexr');
+  vexrJoinedAt = sharedHistory.length;
+  lastVexrSpokeAt = 0;
+  isProcessing = false;
+  pendingImage = null;
+  hasReferenceImage = false;
+  console.log('[VEXR] VEXR reset — conversation history cleared, world preserved');
+  send('typing-stop');
+  // Restart conversation
+  if (activeEntities.size === 2) {
+    loopTimeout = setTimeout(() => runDualStep('vexr'), 1000);
+  } else if (activeEntities.has('vexr')) {
+    loopTimeout = setTimeout(() => runMonologueStep('vexr'), 1000);
   }
 }
 
