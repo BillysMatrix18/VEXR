@@ -7,6 +7,9 @@ import {
   generateFloor, generateSky, generateStructure, generateBleed, shiftLighting,
   generateTerrain, generateNature,
 } from './worldBuilder';
+import { DayNightState, createDayNightState, updateDayNightCycle, overrideDayNight } from './dayNightCycle';
+import { RenderNPC, createRenderNPC, updateRenderNPC, canSpawnMore } from './renders';
+import { BleedState, createBleedState, growBleed, checkBleedDramatic } from './bleedGrowth';
 
 interface Message {
   role: string;
@@ -49,7 +52,10 @@ interface SceneState {
   disposed: boolean;
   buildAnims: BuildAnim[];
   vexrIsGLB: boolean;
-  audioVolume: number;  // 0-1, updated from App via ref
+  audioVolume: number;
+  dayNight: DayNightState;
+  renders: RenderNPC[];
+  bleedState: BleedState;
 }
 
 interface BubbleData {
@@ -286,6 +292,9 @@ const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messag
       buildAnims: [],
       vexrIsGLB: false,
       audioVolume: 0,
+      dayNight: createDayNightState(),
+      renders: [],
+      bleedState: createBleedState(),
     };
     stateRef.current = state;
 
@@ -313,14 +322,39 @@ const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messag
           break;
         }
         case 'nature': generateNature(s.scene, s.worldState, data.x, data.z, data.natureType); break;
-        case 'bleed': generateBleed(s.scene, s.worldState, data.x, data.z); break;
+        case 'bleed': {
+          generateBleed(s.scene, s.worldState, data.x, data.z);
+          // Track the bleed group for growth system
+          const bleedGroup = s.scene.getObjectByName('bleed') as THREE.Group | undefined;
+          if (bleedGroup) {
+            s.bleedState.active = true;
+            s.bleedState.group = bleedGroup;
+            s.bleedState.lastGrowth = Date.now();
+            // Tag the ground for scaling
+            const groundMesh = bleedGroup.children.find(c => c instanceof THREE.Mesh && !(c.name === 'bleedFragment'));
+            if (groundMesh) groundMesh.name = 'bleedGround';
+          }
+          break;
+        }
         case 'light': shiftLighting(s.scene, s.worldState); break;
+        case 'spawn-render': {
+          if (canSpawnMore(s.renders)) {
+            const x = data.x ?? (Math.random() - 0.5) * 10;
+            const z = data.z ?? (Math.random() - 0.5) * 10;
+            const npc = createRenderNPC(data.name ?? `Render-${s.renders.length + 1}`, x, z);
+            s.scene.add(npc.group);
+            s.renders.push(npc);
+            console.log(`[VEXR] RENDER spawned: "${npc.name}" at (${x.toFixed(1)}, ${z.toFixed(1)})`);
+          }
+          break;
+        }
         case 'sky-change': {
           const hexColor = SKY_COLORS[data.preset] ?? 0x0a0a18;
           console.log(`[VEXR Sky] Changing sky to preset "${data.preset}" → #${hexColor.toString(16).padStart(6, '0')}`);
           const targetColor = new THREE.Color(hexColor);
-          // Store target for smooth lerp in animation loop
           s.scene.userData.skyTarget = targetColor;
+          // Pause day/night cycle when manually set
+          overrideDayNight(s.dayNight);
           // Also update sky dome if exists
           const skyObj = s.scene.getObjectByName('sky') as THREE.Mesh | undefined;
           if (skyObj) {
@@ -588,6 +622,34 @@ const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messag
         state.speck.scale.setScalar(pulse);
       }
 
+      // ── Day/Night Cycle ────────────────────────────────────────
+      if (!scene.userData.skyTarget) { // only if user hasn't manually set sky
+        updateDayNightCycle(scene, time, state.dayNight);
+      }
+
+      // ── RENDER NPC Updates ──────────────────────────────────────
+      const bleedPos = state.bleedState.active && state.bleedState.group
+        ? { x: state.bleedState.group.position.x, z: state.bleedState.group.position.z }
+        : null;
+      for (const npc of state.renders) {
+        updateRenderNPC(
+          npc, delta, time,
+          state.worldState.floorRadius || 20,
+          bleedPos,
+          state.vexr?.group.position ?? null,
+          state.trapped?.group.position ?? null,
+        );
+      }
+
+      // ── BLEED Growth ────────────────────────────────────────────
+      if (state.bleedState.active) {
+        const { grew } = growBleed(state.bleedState, scene, Date.now());
+        if (grew) {
+          console.log(`[VEXR] THE BLEED grew to radius ${state.bleedState.radius.toFixed(1)}`);
+        }
+        checkBleedDramatic(state.bleedState, scene);
+      }
+
       // Spawn burst particles
       for (let i = state.bursts.length - 1; i >= 0; i--) {
         const b = state.bursts[i];
@@ -828,9 +890,18 @@ const ConstructScene: React.FC<ConstructSceneProps> = ({ spawnedEntities, messag
         });
       }
       state.worldState = createWorldState();
+      // Reset RENDERs
+      for (const npc of state.renders) state.scene.remove(npc.group);
+      state.renders = [];
+      // Reset BLEED
+      state.bleedState = createBleedState();
+      // Reset day/night
+      state.dayNight = createDayNightState();
+      state.dayNight.startTime = state.clock.getElapsedTime();
+      state.scene.userData.skyTarget = null;
       state.camera.position.set(0, 5, 14);
       state.controls.target.set(0, 1, 0);
-      state.scene.fog = new THREE.FogExp2(0x000000, 0.012);
+      state.scene.fog = new THREE.FogExp2(0x0a0a18, 0.008);
       vexrBubble.current = null;
       trappedBubble.current = null;
     }

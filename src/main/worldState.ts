@@ -321,6 +321,10 @@ export function processVexrMessageForWorldGen(
         }
         break;
       }
+      case 'render': {
+        send('generate-world-element', { type: 'spawn-render', name: `Render-${Date.now() % 1000}` });
+        break;
+      }
       case 'speck': break;
     }
   }

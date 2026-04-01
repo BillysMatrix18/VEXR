@@ -186,6 +186,7 @@ export function parseKeywords(message: string): string[] {
   if (/\b(bleed|corrupt|glitch|broken|decay|error|virus)\b/.test(l)) kw.push('bleed');
   if (/\bspeck\b/i.test(l)) kw.push('speck');
   if (/\b(light|glow|illuminate|shine)\b/.test(l)) kw.push('light');
+  if (/\b(render|citizen|come here|summon|my people)\b/.test(l)) kw.push('render');
 
   return [...new Set(kw)];
 }
