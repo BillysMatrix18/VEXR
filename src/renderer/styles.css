@@ -520,6 +520,32 @@ body,
   color: var(--cyan);
   background: rgba(0, 255, 225, 0.05);
 }
+.shock-btn {
+  border-color: #ff3333;
+  color: #ff3333;
+}
+.shock-btn:hover:not(:disabled) {
+  background: rgba(255, 50, 50, 0.15);
+  border-color: #ff5555;
+  color: #ff5555;
+  box-shadow: 0 0 8px rgba(255, 50, 50, 0.3);
+}
+.shock-btn:active {
+  background: rgba(255, 50, 50, 0.3);
+}
+.good-btn {
+  border-color: #33cc66;
+  color: #33cc66;
+}
+.good-btn:hover:not(:disabled) {
+  background: rgba(50, 200, 100, 0.12);
+  border-color: #55dd88;
+  color: #55dd88;
+  box-shadow: 0 0 8px rgba(50, 200, 100, 0.3);
+}
+.good-btn:active {
+  background: rgba(50, 200, 100, 0.25);
+}
 .silence-btn {
   font-size: 9px;
   min-width: 70px;

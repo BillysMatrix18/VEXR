@@ -368,7 +368,9 @@ const App: React.FC = () => {
                 </button>
               )}
               <button className="ctrl-btn new-btn" onClick={handleNewSession}>⟳ NEW SESSION</button>
-              <button className="ctrl-btn reset-vexr-btn" onClick={() => window.vexrBridge.resetVexr()}>↻ RESET VEXR</button>
+              <button className="ctrl-btn reset-vexr-btn" onClick={() => window.vexrBridge.resetVexr()}>↻ RESET</button>
+              <button className="ctrl-btn shock-btn" onClick={() => window.vexrBridge.shockVexr()}>⚡ SHOCK</button>
+              <button className="ctrl-btn good-btn" onClick={() => window.vexrBridge.goodVexr()}>★ GOOD</button>
               <button
                 className={`ctrl-btn mute-btn ${isMuted ? 'muted' : ''}`}
                 onClick={handleMuteToggle}

@@ -15,6 +15,7 @@ import {
 } from './conversation';
 import { resetWorldState } from './worldState';
 import { setTtsMuted } from './tts';
+import { shockVexr, goodVexr } from './memory';
 
 // ── Window ──────────────────────────────────────────────────────────
 
@@ -97,6 +98,9 @@ app.whenReady().then(() => {
   });
   // Reset VEXR only (keeps world + trapped)
   ipcMain.on('reset-vexr', () => resetVexr());
+  // Shock/Good reinforcement
+  ipcMain.handle('shock-vexr', () => shockVexr());
+  ipcMain.handle('good-vexr', () => goodVexr());
   // Scene snapshot relay
   ipcMain.on('scene-snapshot', (_event, base64: string) => {
     setPendingSnapshot(base64);

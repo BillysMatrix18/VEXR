@@ -9,6 +9,8 @@ interface VexrBridge {
   newSession: () => void;
   resetVexr: () => void;
   getVexrModel: () => Promise<string | null>;
+  shockVexr: () => Promise<string>;
+  goodVexr: () => Promise<string>;
 
   windowMinimize: () => void;
   windowMaximize: () => void;

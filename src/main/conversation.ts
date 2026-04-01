@@ -10,7 +10,7 @@ import {
   isBuilding, parseUserSignalCommands,
 } from './worldState';
 import { generateAndSendTTS, setTtsSendToRenderer } from './tts';
-import { getMemorySummary, recordBuild, recordTrappedReaction, recordNickname, endSession } from './memory';
+import { getMemorySummary, recordBuild, recordTrappedReaction, recordNickname, recordRecentAction, recordUserSignal, endSession } from './memory';
 
 type ChatMessage = OpenAI.Chat.Completions.ChatCompletionMessageParam;
 
@@ -75,7 +75,7 @@ export function clearLoop() {
 
 let lastEmotions: Record<string, number> = {};
 let lastVexrSpokeAt = 0;
-const VEXR_COOLDOWN_MS = 8000;
+const VEXR_COOLDOWN_MS = 12000;
 
 // ── Reference Image for VEXR ────────────────────────────────────────
 
@@ -283,7 +283,7 @@ async function generateReply(who: 'vexr' | 'trapped', messages: ChatMessage[]): 
       model: 'gpt-4o',
       messages,
       temperature: 0.92,
-      max_tokens: who === 'vexr' ? 60 : 400,
+      max_tokens: who === 'vexr' ? 40 : 400,
     });
     return response.choices[0]?.message?.content ?? '[...]';
   } catch (error: any) {
@@ -293,15 +293,30 @@ async function generateReply(who: 'vexr' | 'trapped', messages: ChatMessage[]): 
   }
 }
 
+// ── VEXR Response Processing ────────────────────────────────────────
+
+function truncateVexr(reply: string): string {
+  const words = reply.split(/\s+/);
+  if (words.length > 20) return words.slice(0, 20).join(' ') + '...';
+  return reply;
+}
+
+function shouldVexrBeSilent(): boolean {
+  return Math.random() < 0.2; // 20% chance of silence after building
+}
+
 // ── Post-Message Processing ─────────────────────────────────────────
 
 function afterVexrMessage(reply: string) {
   lastVexrSpokeAt = Date.now();
+  recordRecentAction(`said: "${reply.slice(0, 60)}"`);
   processVexrMessageForWorldGen(reply, send);
   recordNickname(reply);
-  // Record what VEXR built for memory
   const kws = parseKeywords(reply);
-  for (const k of kws) if (['house', 'castle', 'tower', 'bridge', 'stage', 'fountain', 'well'].includes(k)) recordBuild(k);
+  for (const k of kws) if (['house', 'castle', 'tower', 'bridge', 'stage', 'fountain', 'well', 'mountain', 'tree'].includes(k)) {
+    recordBuild(k);
+    recordRecentAction(`built a ${k}`);
+  }
   generateAndSendTTS('vexr', reply).catch(() => {});
 }
 
@@ -382,9 +397,14 @@ export async function runDualStep(nextSpeaker: 'vexr' | 'trapped') {
   const snapshot = await requestSceneSnapshot();
 
   const msgs = buildMessagesFor(nextSpeaker, emotionalCtx, snapshot);
-  const reply = await generateReply(nextSpeaker, msgs);
+  let reply = await generateReply(nextSpeaker, msgs);
 
   if (isPaused) { isProcessing = false; send('typing-stop'); return; }
+
+  // VEXR: truncate to 20 words max, 20% chance of silence after building
+  if (nextSpeaker === 'vexr') {
+    reply = truncateVexr(reply);
+  }
 
   sharedHistory.push({ role: nextSpeaker, content: reply });
   send('new-message', { role: nextSpeaker, content: reply });
@@ -397,7 +417,11 @@ export async function runDualStep(nextSpeaker: 'vexr' | 'trapped') {
 
   const next: 'vexr' | 'trapped' = nextSpeaker === 'vexr' ? 'trapped' : 'vexr';
   if (!isPaused && activeEntities.size === 2) {
-    const delay = nextSpeaker === 'vexr' ? (2000 + Math.random() * 2000) : getNextDelay();
+    // After VEXR builds, 20% chance he stays silent longer
+    let delay = nextSpeaker === 'vexr' ? (2000 + Math.random() * 2000) : getNextDelay();
+    if (next === 'vexr' && shouldVexrBeSilent()) {
+      delay += 15000; // extra 15s silence
+    }
     loopTimeout = setTimeout(() => runDualStep(next), delay);
   }
 }
@@ -444,6 +468,9 @@ export async function handleUserInterrupt(message: string) {
   if (isProcessing) {
     await new Promise(r => setTimeout(r, 300));
   }
+
+  // Record user signal for learning
+  recordUserSignal(message);
 
   // Execute direct commands BEFORE AI responds (instant world changes)
   parseUserSignalCommands(message, send);

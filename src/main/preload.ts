@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld('vexrBridge', {
   newSession: () => ipcRenderer.send('new-session'),
   resetVexr: () => ipcRenderer.send('reset-vexr'),
   getVexrModel: (): Promise<string | null> => ipcRenderer.invoke('get-vexr-model'),
+  shockVexr: (): Promise<string> => ipcRenderer.invoke('shock-vexr'),
+  goodVexr: (): Promise<string> => ipcRenderer.invoke('good-vexr'),
 
   windowMinimize: () => ipcRenderer.send('window-minimize'),
   windowMaximize: () => ipcRenderer.send('window-maximize'),
